@@ -1,5 +1,5 @@
 name: class_rep
-description: "A new Flutter project."
+description: "Class-Rep — a lightweight, shareable timetable app with comments, optional media on events, paid “Plus” subscriptions (₦800/mo), and creator rewards for popular timetable creators."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -31,9 +31,22 @@ dependencies:
   flutter:
     sdk: flutter
 
-  # The following adds the Cupertino Icons font to your application.
-  # Use with the CupertinoIcons class for iOS style icons.
-  cupertino_icons: ^1.0.8
+  # Supabase Client
+  supabase_flutter: ^2.5.0 # Or the latest version
+
+  # UI & Utilities
+  intl: ^0.19.0 # For date formatting
+  table_calendar: ^3.1.2 # The calendar widget
+  image_picker: ^1.1.2 # For picking images
+  permission_handler: ^11.3.1 # For requesting permissions
+  share_plus: ^9.0.0 # For the share button
+  http: ^1.2.1 # For making HTTP requests
+  audioplayers: ^6.0.0 # For text-to-speech audio
+  flutter_dotenv: ^5.1.0 # For managing API keys safely
+  uuid: ^4.4.0 # For generating unique IDs
+
+  # Icons
+  cupertino_icons: ^1.0.2
 
 dev_dependencies:
   flutter_test:
@@ -56,6 +69,8 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+  assets:
+    - assets/images/
 
   # To add assets to your application, add an assets section, like this:
   # assets:
