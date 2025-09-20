@@ -58,7 +58,7 @@ class _SplashScreenState extends State<SplashScreen> {
           children: [
             // Your background image
             Image.asset(
-              'assets/images/welcome_background.jpg', // <-- IMPORTANT: Make sure your image is here
+              'assets/images/welcome_background.png', // <-- IMPORTANT: Make sure your image is here
               fit: BoxFit.cover,
             ),
             // A dark overlay for better text visibility

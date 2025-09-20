@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:class_rep/shared/services/auth_service.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 class LoginScreen extends StatefulWidget {
   static const routeName = '/login';
@@ -25,34 +24,22 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // Since Supabase signs in with email, we must first get the email from the username.
-      final username = _emailController.text
-          .trim(); // User enters username here
-
-      final response = await Supabase.instance.client
-          .from('users')
-          .select('email')
-          .eq('username', username)
-          .single();
-
-      final email = response['email'] as String?;
-
-      if (email == null) {
-        throw Exception('User not found. Please check the username.');
-      }
-
       await AuthService.instance.signInWithPassword(
-        email: email,
+        email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
       );
 
-      // On success, the StreamBuilder in main.dart handles navigation.
-      // We just pop this screen off the stack.
-      if (mounted) Navigator.of(context).popUntil((route) => route.isFirst);
+      if (mounted) {
+        // THE ONLY CHANGE IS HERE: We navigate to '/main' instead of '/timetable'
+        Navigator.of(context).pushReplacementNamed('/main');
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString()), backgroundColor: Colors.red),
+          SnackBar(
+            content: Text(e.toString().split(': ').last),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } finally {
@@ -61,6 +48,8 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     }
   }
+
+  // In _LoginScreenState
 
   @override
   Widget build(BuildContext context) {
@@ -77,9 +66,12 @@ class _LoginScreenState extends State<LoginScreen> {
               children: [
                 TextFormField(
                   controller: _emailController,
-                  decoration: const InputDecoration(labelText: 'Username'),
+                  // --- THIS IS THE FIX ---
+                  decoration: const InputDecoration(labelText: 'Email'),
+                  // --- END OF FIX ---
                   validator: (value) =>
-                      value!.isEmpty ? 'Please enter your username' : null,
+                      value!.isEmpty ? 'Please enter your email' : null,
+                  keyboardType: TextInputType.emailAddress,
                 ),
                 const SizedBox(height: 16),
                 TextFormField(

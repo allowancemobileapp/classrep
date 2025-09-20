@@ -1,4 +1,7 @@
+// lib/shared/services/supabase_service.dart
+
 import 'dart:math';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:class_rep/shared/services/auth_service.dart';
@@ -22,6 +25,8 @@ class SupabaseService {
 
   // Fetches all events for the current user by calling the RPC function.
   Future<List<Map<String, dynamic>>> fetchEvents() async {
+    // --- THIS IS THE FIX ---
+    // We no longer need the schema prefix because everything is in 'public'.
     final response = await supabase.rpc('get_timetable_events_for_user');
     return (response as List).cast<Map<String, dynamic>>();
   }
@@ -35,7 +40,6 @@ class SupabaseService {
     String? groupId,
     String? imageUrl,
     String? linkUrl,
-    String? repeat, // <-- Correctly added this field
   }) async {
     final userId = AuthService.instance.currentUser?.id;
     if (userId == null) throw Exception('User not logged in');
@@ -49,7 +53,6 @@ class SupabaseService {
       'group_id': groupId,
       'image_url': imageUrl,
       'url': linkUrl,
-      'repeat': repeat ?? 'none',
     });
   }
 
@@ -63,7 +66,6 @@ class SupabaseService {
     String? groupId,
     String? imageUrl,
     String? linkUrl,
-    String? repeat,
   }) async {
     final userId = AuthService.instance.currentUser?.id;
     if (userId == null) throw Exception('User not logged in');
@@ -78,7 +80,6 @@ class SupabaseService {
           'group_id': groupId,
           'image_url': imageUrl,
           'url': linkUrl,
-          'repeat': repeat ?? 'none',
         })
         .eq('id', eventId);
   }
@@ -139,6 +140,8 @@ class SupabaseService {
 
   // Subscribes the current user to another user's timetable.
   Future<void> subscribeToTimetable(String username) async {
+    // --- THIS IS THE FIX ---
+    // We no longer need the schema prefix here either.
     await supabase.rpc(
       'subscribe_to_timetable',
       params: {'p_owner_username': username},
@@ -155,9 +158,15 @@ class SupabaseService {
         .select('owner:owner_id(id, username, display_name, avatar_url)')
         .eq('subscriber_id', userId);
 
+    // --- START OF FIX ---
+    // The original code would crash if 'owner' was null (e.g., user was deleted).
+    // This new version safely filters out any null owners before processing.
     return (response as List)
-        .map((row) => row['owner'] as Map<String, dynamic>)
+        .map((row) => row['owner'])
+        .where((owner) => owner != null) // This is the crucial line!
+        .map((owner) => owner as Map<String, dynamic>)
         .toList();
+    // --- END OF FIX ---
   }
 
   // Unsubscribes from a user's timetable.
@@ -169,5 +178,48 @@ class SupabaseService {
       'owner_id': ownerId,
       'subscriber_id': userId,
     });
+  }
+
+  // Fetches creator stats (addon counts, rewards) for the current user.
+  Future<Map<String, dynamic>> fetchCreatorStats() async {
+    final userId = AuthService.instance.currentUser?.id;
+    if (userId == null) throw Exception('User not logged in');
+
+    final response = await supabase
+        .from('creator_metrics')
+        .select()
+        .eq('creator_user_id', userId)
+        .maybeSingle();
+
+    // If the user has no metrics yet, return a default map.
+    return response ??
+        {'plus_addons_count': 0, 'reward_balance': 0, 'total_earned': 0};
+  }
+
+  // In SupabaseService class
+
+  // Uploads a selected image file to the 'event_images' bucket.
+  Future<String> uploadEventImage({
+    required String filePath,
+    required List<int> fileBytes,
+  }) async {
+    final userId = AuthService.instance.currentUser?.id;
+    if (userId == null) throw Exception('User not logged in');
+
+    final fileName = '${DateTime.now().millisecondsSinceEpoch}.jpg';
+    final storagePath = '$userId/$fileName';
+
+    // --- THIS IS THE FIX ---
+    // We convert the List<int> to a Uint8List before uploading.
+    await supabase.storage
+        .from('event_images')
+        .uploadBinary(
+          storagePath,
+          Uint8List.fromList(fileBytes), // The conversion happens here
+          fileOptions: const FileOptions(cacheControl: '3600', upsert: false),
+        );
+    // --- END OF FIX ---
+
+    return supabase.storage.from('event_images').getPublicUrl(storagePath);
   }
 }

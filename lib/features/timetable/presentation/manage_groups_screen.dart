@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:class_rep/shared/services/supabase_service.dart';
-import 'package:class_rep/shared/widgets/glass_container.dart';
 
 class ManageGroupsScreen extends StatefulWidget {
   const ManageGroupsScreen({super.key});
