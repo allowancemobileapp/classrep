@@ -59,6 +59,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       appBar: AppBar(
         backgroundColor: darkSuedeNavy,
         title: const Text('Profile'),
+        automaticallyImplyLeading: false, // This removes the back button
       ),
       body: _isLoading
           ? const Center(
@@ -70,14 +71,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
               : ListView(
                   padding: const EdgeInsets.all(16.0),
                   children: [
-                    // --- Profile Header ---
                     Column(
                       children: [
                         CircleAvatar(
                           radius: 50,
                           backgroundColor: lightSuedeNavy,
-                          // --- THIS IS THE FIX ---
-                          // It now correctly checks for an avatar_url and displays it
                           backgroundImage: _userProfile?['avatar_url'] != null
                               ? NetworkImage(_userProfile!['avatar_url'])
                               : null,
@@ -109,8 +107,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ],
                     ),
                     const SizedBox(height: 32),
-
-                    // --- Profile Details ---
                     GlassContainer(
                       padding: const EdgeInsets.all(16),
                       child: Column(
@@ -122,19 +118,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ),
                           const Divider(color: lightSuedeNavy),
                           _buildInfoTile(
-                            icon: Icons
-                                .alternate_email, // Placeholder for Twitter icon
+                            icon: Icons.alternate_email,
                             title: 'Twitter',
                             subtitle: _userProfile?['twitter_handle'] != null
                                 ? '@${_userProfile!['twitter_handle']}'
                                 : 'Not connected.',
                           ),
+                          const Divider(color: lightSuedeNavy),
+                          // --- ADD THIS ---
+                          _buildInfoTile(
+                            icon: Icons.account_balance_wallet_outlined,
+                            title: 'USDT Wallet (TRC-20)',
+                            subtitle: _userProfile?['usdt_wallet_address'] ??
+                                'No wallet set.',
+                          ),
                         ],
                       ),
                     ),
                     const SizedBox(height: 32),
-
-                    // --- Action Buttons ---
                     ElevatedButton.icon(
                       icon: const Icon(Icons.edit_outlined),
                       label: const Text('Edit Profile'),
@@ -148,7 +149,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             fontFamily: 'LeagueSpartan'),
                       ),
                       onPressed: () async {
-                        // Navigate to the edit screen and wait for it to close
                         await Navigator.push(
                           context,
                           MaterialPageRoute(
@@ -156,7 +156,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 EditProfileScreen(profile: _userProfile!),
                           ),
                         );
-                        // After returning, reload the profile data to show changes
                         _loadProfile();
                       },
                     ),
@@ -176,7 +175,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       onPressed: () async {
                         await AuthService.instance.signOut();
                         if (mounted) {
-                          // Navigate back to the splash screen to handle re-routing
                           Navigator.of(context).pushAndRemoveUntil(
                             MaterialPageRoute(
                                 builder: (context) => const SplashScreen()),

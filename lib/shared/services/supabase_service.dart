@@ -6,9 +6,9 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:class_rep/shared/services/auth_service.dart';
-import 'dart:convert'; // Add this import
-import 'package:flutter_dotenv/flutter_dotenv.dart'; // Add this import
-import 'package:http/http.dart' as http; // Add this import
+import 'dart:convert';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:http/http.dart' as http;
 
 // Helper to access the Supabase client easily.
 final supabase = Supabase.instance.client;
@@ -26,14 +26,9 @@ class SupabaseService {
 
   // Fetches all events for the current user by calling the RPC function.
   Future<List<Map<String, dynamic>>> fetchEvents() async {
-    // --- THIS IS THE FIX ---
-    // We no longer need the schema prefix because everything is in 'public'.
     final response = await supabase.rpc('get_timetable_events_for_user');
     return (response as List).cast<Map<String, dynamic>>();
   }
-
-  // Creates a new event in the database.
-  // In lib/shared/services/supabase_service.dart
 
   // Creates a new event in the database.
   Future<void> createEvent({
@@ -44,7 +39,7 @@ class SupabaseService {
     String? groupId,
     String? imageUrl,
     String? linkUrl,
-    String? repeat, // <-- ADD THIS LINE
+    String? repeat,
   }) async {
     final userId = AuthService.instance.currentUser?.id;
     if (userId == null) throw Exception('User not logged in');
@@ -58,7 +53,7 @@ class SupabaseService {
       'group_id': groupId,
       'image_url': imageUrl,
       'url': linkUrl,
-      'repeat': repeat, // <-- AND THIS LINE
+      'repeat': repeat,
     });
   }
 
@@ -72,7 +67,7 @@ class SupabaseService {
     String? groupId,
     String? imageUrl,
     String? linkUrl,
-    String? repeat, // <-- ADD THIS LINE
+    String? repeat,
   }) async {
     final userId = AuthService.instance.currentUser?.id;
     if (userId == null) throw Exception('User not logged in');
@@ -85,7 +80,7 @@ class SupabaseService {
       'group_id': groupId,
       'image_url': imageUrl,
       'url': linkUrl,
-      'repeat': repeat, // <-- AND THIS LINE
+      'repeat': repeat,
     }).eq('id', eventId);
   }
 
@@ -144,8 +139,6 @@ class SupabaseService {
 
   // Subscribes the current user to another user's timetable.
   Future<void> subscribeToTimetable(String username) async {
-    // --- THIS IS THE FIX ---
-    // We no longer need the schema prefix here either.
     await supabase.rpc(
       'subscribe_to_timetable',
       params: {'p_owner_username': username},
@@ -162,15 +155,11 @@ class SupabaseService {
         .select('owner:owner_id(id, username, display_name, avatar_url)')
         .eq('subscriber_id', userId);
 
-    // --- START OF FIX ---
-    // The original code would crash if 'owner' was null (e.g., user was deleted).
-    // This new version safely filters out any null owners before processing.
     return (response as List)
         .map((row) => row['owner'])
-        .where((owner) => owner != null) // This is the crucial line!
+        .where((owner) => owner != null)
         .map((owner) => owner as Map<String, dynamic>)
         .toList();
-    // --- END OF FIX ---
   }
 
   // Unsubscribes from a user's timetable.
@@ -195,12 +184,9 @@ class SupabaseService {
         .eq('creator_user_id', userId)
         .maybeSingle();
 
-    // If the user has no metrics yet, return a default map.
     return response ??
         {'plus_addons_count': 0, 'reward_balance': 0, 'total_earned': 0};
   }
-
-  // In SupabaseService class
 
   // Uploads a selected image file to the 'event_images' bucket.
   Future<String> uploadEventImage({
@@ -213,14 +199,11 @@ class SupabaseService {
     final fileName = '${DateTime.now().millisecondsSinceEpoch}.jpg';
     final storagePath = '$userId/$fileName';
 
-    // --- THIS IS THE FIX ---
-    // We convert the List<int> to a Uint8List before uploading.
     await supabase.storage.from('event_images').uploadBinary(
           storagePath,
-          Uint8List.fromList(fileBytes), // The conversion happens here
+          Uint8List.fromList(fileBytes),
           fileOptions: const FileOptions(cacheControl: '3600', upsert: false),
         );
-    // --- END OF FIX ---
 
     return supabase.storage.from('event_images').getPublicUrl(storagePath);
   }
@@ -250,7 +233,6 @@ class SupabaseService {
 
     if (response.statusCode == 200) {
       final body = jsonDecode(response.body);
-      // Return both the URL and the reference
       return {
         'authorization_url': body['data']['authorization_url'],
         'reference': body['data']['reference'],
@@ -261,7 +243,6 @@ class SupabaseService {
     }
   }
 
-  // ADD THIS NEW METHOD
   Future<bool> verifyPayment(String reference) async {
     try {
       final response = await supabase.functions.invoke(
@@ -278,20 +259,57 @@ class SupabaseService {
     }
   }
 
-  // In lib/shared/services/supabase_service.dart
+  // --- ADDED: Calls the function to cancel a subscription ---
+  Future<void> cancelSubscription() async {
+    try {
+      final response =
+          await supabase.functions.invoke('cancel-paystack-subscription');
+      if (response.status != 200) {
+        throw Exception(
+            response.data['error'] ?? 'Failed to cancel subscription.');
+      }
+    } catch (e) {
+      throw Exception('Error calling cancel-subscription function: $e');
+    }
+  }
 
-  // In lib/shared/services/supabase_service.dart
+  // --- ADDED: Calls the function to confirm a subscription record exists ---
+  Future<bool> confirmSubscriptionRecord() async {
+    try {
+      final response =
+          await supabase.functions.invoke('confirm-subscription-record');
+      if (response.data['status'] == 'success') {
+        return true;
+      } else {
+        throw Exception(response.data['error'] ?? 'Confirmation failed.');
+      }
+    } catch (e) {
+      throw Exception('Error calling confirm-subscription-record function: $e');
+    }
+  }
 
-  // --- ADD THIS NEW METHOD ---
+  // --- ADDED: Calls the function to confirm the user's state is cancelled ---
+  Future<bool> confirmCancellationState() async {
+    try {
+      final response =
+          await supabase.functions.invoke('confirm-cancellation-state');
+      if (response.data['status'] == 'success') {
+        return true;
+      } else {
+        throw Exception(response.data['error'] ?? 'Confirmation failed.');
+      }
+    } catch (e) {
+      throw Exception('Error calling confirm-cancellation-state function: $e');
+    }
+  }
+
   Future<String> uploadAvatar(XFile image) async {
     final userId = AuthService.instance.currentUser?.id;
     if (userId == null) throw Exception('User not logged in');
 
     final bytes = await image.readAsBytes();
     final fileExt = image.path.split('.').last;
-    // Use a unique name for the file itself, like the current timestamp
     final fileName = '${DateTime.now().millisecondsSinceEpoch}.$fileExt';
-    // THIS IS THE IMPORTANT CHANGE: The file path is now inside a folder named with the user's ID
     final filePath = '$userId/$fileName';
 
     await supabase.storage.from('avatars').uploadBinary(
@@ -303,13 +321,13 @@ class SupabaseService {
     return supabase.storage.from('avatars').getPublicUrl(filePath);
   }
 
-  // --- REPLACE the old updateUserProfile with this one ---
   Future<void> updateUserProfile({
     required String displayName,
     required String? username,
     required String? bio,
     required String? twitterHandle,
-    String? avatarUrl, // Now accepts avatarUrl
+    String? avatarUrl,
+    String? usdtWalletAddress,
   }) async {
     final userId = AuthService.instance.currentUser?.id;
     if (userId == null) throw Exception('User not logged in');
@@ -320,6 +338,7 @@ class SupabaseService {
       'bio': bio,
       'twitter_handle': twitterHandle,
       'avatar_url': avatarUrl,
+      'usdt_wallet_address': usdtWalletAddress,
     }).eq('id', userId);
   }
 

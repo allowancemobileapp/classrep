@@ -130,7 +130,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
       backgroundColor: darkSuedeNavy,
       appBar: AppBar(
         scrolledUnderElevation: 0.0,
-        automaticallyImplyLeading: false,
+        // automaticallyImplyLeading: false,
         backgroundColor: darkSuedeNavy,
         elevation: 0,
         centerTitle: true,
@@ -324,13 +324,20 @@ class _TimetableScreenState extends State<TimetableScreen> {
                 leading: CircleAvatar(
                   radius: 24,
                   backgroundColor: lightSuedeNavy,
-                  child: Text(
-                    displayUsername.isNotEmpty
-                        ? displayUsername[0].toUpperCase()
-                        : '?',
-                    style: const TextStyle(
-                        color: Colors.white, fontWeight: FontWeight.bold),
-                  ),
+                  // --- START OF UPDATE ---
+                  backgroundImage: _userProfile?['avatar_url'] != null
+                      ? NetworkImage(_userProfile!['avatar_url'])
+                      : null,
+                  child: _userProfile?['avatar_url'] == null
+                      ? Text(
+                          displayUsername.isNotEmpty
+                              ? displayUsername[0].toUpperCase()
+                              : '?',
+                          style: const TextStyle(
+                              color: Colors.white, fontWeight: FontWeight.bold),
+                        )
+                      : null,
+                  // --- END OF UPDATE ---
                 ),
                 title: Text(
                   '@$displayUsername',

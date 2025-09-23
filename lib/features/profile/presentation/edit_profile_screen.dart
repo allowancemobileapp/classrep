@@ -22,6 +22,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   late final TextEditingController _usernameController;
   late final TextEditingController _bioController;
   late final TextEditingController _twitterController;
+  late final TextEditingController _usdtWalletController; // Add this
   bool _isLoading = false;
   XFile? _pickedAvatar;
 
@@ -35,6 +36,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _bioController = TextEditingController(text: widget.profile['bio']);
     _twitterController =
         TextEditingController(text: widget.profile['twitter_handle']);
+    _usdtWalletController = TextEditingController(
+        text: widget.profile['usdt_wallet_address']); // Add this
   }
 
   @override
@@ -43,6 +46,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _usernameController.dispose();
     _bioController.dispose();
     _twitterController.dispose();
+    _usdtWalletController.dispose(); // Add this
     super.dispose();
   }
 
@@ -62,42 +66,34 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       setState(() => _isLoading = true);
       try {
         String? newAvatarUrl = widget.profile['avatar_url'];
-
-        // 1. Upload new avatar if one was picked
         if (_pickedAvatar != null) {
           newAvatarUrl =
               await SupabaseService.instance.uploadAvatar(_pickedAvatar!);
         }
 
-        // 2. Update the rest of the profile info
         await SupabaseService.instance.updateUserProfile(
           displayName: _displayNameController.text.trim(),
           username: _usernameController.text.trim(),
           bio: _bioController.text.trim(),
           twitterHandle: _twitterController.text.trim(),
           avatarUrl: newAvatarUrl,
+          usdtWalletAddress: _usdtWalletController.text.trim(), // Add this
         );
 
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-                content: Text('Profile saved successfully!'),
-                backgroundColor: Colors.green),
-          );
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('Profile saved successfully!'),
+              backgroundColor: Colors.green));
           Navigator.pop(context);
         }
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-                content: Text('Error saving profile: $e'),
-                backgroundColor: Colors.red),
-          );
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text('Error saving profile: $e'),
+              backgroundColor: Colors.red));
         }
       } finally {
-        if (mounted) {
-          setState(() => _isLoading = false);
-        }
+        if (mounted) setState(() => _isLoading = false);
       }
     }
   }
@@ -115,7 +111,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16.0),
           children: [
-            // --- AVATAR PICKER ---
             Center(
               child: Stack(
                 children: [
@@ -148,7 +143,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               ),
             ),
             const SizedBox(height: 32),
-            // --- FORM FIELDS ---
             TextFormField(
               controller: _displayNameController,
               decoration: _buildInputDecoration(labelText: 'Display Name'),
@@ -183,6 +177,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               controller: _twitterController,
               decoration: _buildInputDecoration(
                   labelText: 'Twitter Handle (without @)'),
+              style: const TextStyle(color: Colors.white),
+            ),
+            const SizedBox(height: 16),
+            // --- ADD THIS NEW TEXT FIELD ---
+            TextFormField(
+              controller: _usdtWalletController,
+              decoration: _buildInputDecoration(
+                  labelText: 'USDT Wallet Address (TRC-20)'),
               style: const TextStyle(color: Colors.white),
             ),
             const SizedBox(height: 32),
