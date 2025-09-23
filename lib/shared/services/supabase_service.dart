@@ -3,8 +3,12 @@
 import 'dart:math';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:class_rep/shared/services/auth_service.dart';
+import 'dart:convert'; // Add this import
+import 'package:flutter_dotenv/flutter_dotenv.dart'; // Add this import
+import 'package:http/http.dart' as http; // Add this import
 
 // Helper to access the Supabase client easily.
 final supabase = Supabase.instance.client;
@@ -15,11 +19,8 @@ class SupabaseService {
 
   // Fetches the user's profile from the 'users' table.
   Future<Map<String, dynamic>> fetchUserProfile(String userId) async {
-    final response = await supabase
-        .from('users')
-        .select()
-        .eq('id', userId)
-        .single();
+    final response =
+        await supabase.from('users').select().eq('id', userId).single();
     return response;
   }
 
@@ -32,6 +33,9 @@ class SupabaseService {
   }
 
   // Creates a new event in the database.
+  // In lib/shared/services/supabase_service.dart
+
+  // Creates a new event in the database.
   Future<void> createEvent({
     required String title,
     String? description,
@@ -40,6 +44,7 @@ class SupabaseService {
     String? groupId,
     String? imageUrl,
     String? linkUrl,
+    String? repeat, // <-- ADD THIS LINE
   }) async {
     final userId = AuthService.instance.currentUser?.id;
     if (userId == null) throw Exception('User not logged in');
@@ -53,6 +58,7 @@ class SupabaseService {
       'group_id': groupId,
       'image_url': imageUrl,
       'url': linkUrl,
+      'repeat': repeat, // <-- AND THIS LINE
     });
   }
 
@@ -66,22 +72,21 @@ class SupabaseService {
     String? groupId,
     String? imageUrl,
     String? linkUrl,
+    String? repeat, // <-- ADD THIS LINE
   }) async {
     final userId = AuthService.instance.currentUser?.id;
     if (userId == null) throw Exception('User not logged in');
 
-    await supabase
-        .from('events')
-        .update({
-          'title': title,
-          'description': description,
-          'start_time': startTime.toIso8601String(),
-          'end_time': endTime.toIso8601String(),
-          'group_id': groupId,
-          'image_url': imageUrl,
-          'url': linkUrl,
-        })
-        .eq('id', eventId);
+    await supabase.from('events').update({
+      'title': title,
+      'description': description,
+      'start_time': startTime.toIso8601String(),
+      'end_time': endTime.toIso8601String(),
+      'group_id': groupId,
+      'image_url': imageUrl,
+      'url': linkUrl,
+      'repeat': repeat, // <-- AND THIS LINE
+    }).eq('id', eventId);
   }
 
   // Deletes an event from the database.
@@ -134,8 +139,7 @@ class SupabaseService {
     final newVisibility = currentVisibility == 'public' ? 'private' : 'public';
     await supabase
         .from('event_groups')
-        .update({'visibility': newVisibility})
-        .eq('id', groupId);
+        .update({'visibility': newVisibility}).eq('id', groupId);
   }
 
   // Subscribes the current user to another user's timetable.
@@ -211,9 +215,7 @@ class SupabaseService {
 
     // --- THIS IS THE FIX ---
     // We convert the List<int> to a Uint8List before uploading.
-    await supabase.storage
-        .from('event_images')
-        .uploadBinary(
+    await supabase.storage.from('event_images').uploadBinary(
           storagePath,
           Uint8List.fromList(fileBytes), // The conversion happens here
           fileOptions: const FileOptions(cacheControl: '3600', upsert: false),
@@ -221,5 +223,130 @@ class SupabaseService {
     // --- END OF FIX ---
 
     return supabase.storage.from('event_images').getPublicUrl(storagePath);
+  }
+
+  Future<Map<String, dynamic>> getPaystackCheckoutUrl(String email) async {
+    final secretKey = dotenv.env['PAYSTACK_SECRET_KEY'];
+    final planCode = dotenv.env['PAYSTACK_PLAN_CODE'];
+
+    if (secretKey == null || planCode == null) {
+      throw Exception('Paystack keys or plan code not found in .env file.');
+    }
+
+    final url = Uri.parse('https://api.paystack.co/transaction/initialize');
+
+    final response = await http.post(
+      url,
+      headers: {
+        'Authorization': 'Bearer $secretKey',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        'email': email,
+        'amount': 500 * 100,
+        'plan': planCode,
+      }),
+    );
+
+    if (response.statusCode == 200) {
+      final body = jsonDecode(response.body);
+      // Return both the URL and the reference
+      return {
+        'authorization_url': body['data']['authorization_url'],
+        'reference': body['data']['reference'],
+      };
+    } else {
+      throw Exception(
+          'Failed to initialize Paystack transaction: ${response.body}');
+    }
+  }
+
+  // ADD THIS NEW METHOD
+  Future<bool> verifyPayment(String reference) async {
+    try {
+      final response = await supabase.functions.invoke(
+        'verify-paystack-payment',
+        body: {'reference': reference},
+      );
+      if (response.data['status'] == 'success') {
+        return true;
+      } else {
+        throw Exception(response.data['error'] ?? 'Verification failed.');
+      }
+    } catch (e) {
+      throw Exception('Error calling verification function: $e');
+    }
+  }
+
+  // In lib/shared/services/supabase_service.dart
+
+  // In lib/shared/services/supabase_service.dart
+
+  // --- ADD THIS NEW METHOD ---
+  Future<String> uploadAvatar(XFile image) async {
+    final userId = AuthService.instance.currentUser?.id;
+    if (userId == null) throw Exception('User not logged in');
+
+    final bytes = await image.readAsBytes();
+    final fileExt = image.path.split('.').last;
+    // Use a unique name for the file itself, like the current timestamp
+    final fileName = '${DateTime.now().millisecondsSinceEpoch}.$fileExt';
+    // THIS IS THE IMPORTANT CHANGE: The file path is now inside a folder named with the user's ID
+    final filePath = '$userId/$fileName';
+
+    await supabase.storage.from('avatars').uploadBinary(
+          filePath,
+          bytes,
+          fileOptions: const FileOptions(cacheControl: '3600', upsert: false),
+        );
+
+    return supabase.storage.from('avatars').getPublicUrl(filePath);
+  }
+
+  // --- REPLACE the old updateUserProfile with this one ---
+  Future<void> updateUserProfile({
+    required String displayName,
+    required String? username,
+    required String? bio,
+    required String? twitterHandle,
+    String? avatarUrl, // Now accepts avatarUrl
+  }) async {
+    final userId = AuthService.instance.currentUser?.id;
+    if (userId == null) throw Exception('User not logged in');
+
+    await supabase.from('users').update({
+      'display_name': displayName,
+      'username': username,
+      'bio': bio,
+      'twitter_handle': twitterHandle,
+      'avatar_url': avatarUrl,
+    }).eq('id', userId);
+  }
+
+  Future<List<Map<String, dynamic>>> fetchNotifications() async {
+    final response = await supabase
+        .from('notifications')
+        .select('*, actor:actor_user_id(username, avatar_url)')
+        .order('created_at', ascending: false);
+    return (response as List).cast<Map<String, dynamic>>();
+  }
+
+  Future<int> getUnreadNotificationsCount() async {
+    final response = await supabase
+        .from('notifications')
+        .count(CountOption.exact)
+        .eq('is_read', false);
+
+    return response;
+  }
+
+  Future<void> markNotificationsAsRead() async {
+    final userId = AuthService.instance.currentUser?.id;
+    if (userId == null) return;
+    await supabase
+        .from('notifications')
+        .update({'is_read': true})
+        .eq('recipient_user_id', userId)
+        .eq('is_read', false);
   }
 }

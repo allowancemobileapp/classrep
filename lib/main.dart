@@ -7,6 +7,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+// --- THEME COLORS (Single Source of Truth for the App) ---
+const Color darkSuedeNavy = Color(0xFF1A1B2C);
+const Color lightSuedeNavy = Color(0xFF2A2C40);
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -45,35 +49,57 @@ final supabase = Supabase.instance.client;
 class ClassRepApp extends StatelessWidget {
   const ClassRepApp({super.key});
 
-  // In your ClassRepApp widget's build method
-
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Class Rep',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData.dark().copyWith(
-        scaffoldBackgroundColor: Colors.black,
+
+      // --- UPDATED THEME DATA ---
+      theme: ThemeData(
+        fontFamily: 'LeagueSpartan', // Set the default font for the entire app
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: darkSuedeNavy,
         primaryColor: Colors.cyanAccent,
-        // ... any other theme settings
+
+        // Default AppBar theme for all screens
+        appBarTheme: const AppBarTheme(
+          backgroundColor: darkSuedeNavy,
+          elevation: 0,
+          centerTitle: true,
+          titleTextStyle: TextStyle(
+            fontFamily: 'LeagueSpartan',
+            fontSize: 22,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
+
+        // Default BottomNavigationBar theme
+        bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+          backgroundColor: darkSuedeNavy,
+          selectedItemColor: Colors.cyanAccent,
+          unselectedItemColor: Colors.grey,
+          showSelectedLabels: true,
+          showUnselectedLabels: false,
+          type: BottomNavigationBarType.fixed,
+        ),
       ),
-      // --- ADD THESE LINES ---
+
       routes: {
         '/main': (context) => const MainScreen(),
         '/timetable': (context) => const TimetableScreen(),
       },
-      // --- END OF ADDED LINES ---
+
       home: StreamBuilder<AuthState>(
         stream: AuthService.instance.authStateChanges,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Scaffold(
-              backgroundColor: Colors.black,
+              backgroundColor: darkSuedeNavy,
               body: Center(child: CircularProgressIndicator()),
             );
           }
-
-          // Your SplashScreen will handle if the user is logged in or not
           return const SplashScreen();
         },
       ),

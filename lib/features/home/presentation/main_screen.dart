@@ -1,5 +1,12 @@
+// lib/main_screen.dart (or wherever your MainScreen is located)
+
 import 'package:flutter/material.dart';
-import 'package:class_rep/features/timetable/presentation/timetable_screen.dart'; // We will create this next
+import 'package:class_rep/features/timetable/presentation/timetable_screen.dart';
+import 'package:class_rep/features/x_analytics/presentation/x_analytics_screen.dart'; // Import X Screen
+import 'package:class_rep/features/profile/presentation/profile_screen.dart'; // Import Profile Screen
+
+// --- THEME COLORS ---
+const Color darkSuedeNavy = Color(0xFF1A1B2C);
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -11,17 +18,11 @@ class MainScreen extends StatefulWidget {
 class _MainScreenState extends State<MainScreen> {
   int _selectedIndex = 0;
 
-  // The pages that correspond to the navigation bar items
+  // UPDATE: Replaced placeholder Text widgets with the actual screens
   static const List<Widget> _widgetOptions = <Widget>[
-    TimetableScreen(), // Home Icon
-    Text(
-      'X Screen (Analytics)',
-      style: TextStyle(color: Colors.white),
-    ), // X Icon
-    Text(
-      'Profile Screen',
-      style: TextStyle(color: Colors.white),
-    ), // Profile Icon
+    TimetableScreen(),
+    XAnalyticsScreen(),
+    ProfileScreen(),
   ];
 
   void _onItemTapped(int index) {
@@ -33,7 +34,7 @@ class _MainScreenState extends State<MainScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: darkSuedeNavy,
       body: Center(child: _widgetOptions.elementAt(_selectedIndex)),
       bottomNavigationBar: BottomNavigationBar(
         items: const <BottomNavigationBarItem>[
@@ -42,11 +43,28 @@ class _MainScreenState extends State<MainScreen> {
             activeIcon: Icon(Icons.home),
             label: 'Home',
           ),
+          // --- START OF ICON UPDATE ---
           BottomNavigationBarItem(
-            icon: Icon(Icons.close), // Using 'close' as a placeholder for 'X'
-            activeIcon: Icon(Icons.close),
-            label: 'X',
+            // Use a Text widget for custom styling (boldness)
+            icon: Text(
+              '=',
+              style: TextStyle(
+                fontSize: 40,
+                fontWeight: FontWeight.bold,
+                color: Colors.yellow, // Unselected color
+              ),
+            ),
+            activeIcon: Text(
+              '=',
+              style: TextStyle(
+                fontSize: 40,
+                fontWeight: FontWeight.bold,
+                color: Colors.yellow, // Selected color is yellow
+              ),
+            ),
+            label: '', // No label
           ),
+          // --- END OF ICON UPDATE ---
           BottomNavigationBarItem(
             icon: Icon(Icons.person_outline),
             activeIcon: Icon(Icons.person),
@@ -55,12 +73,12 @@ class _MainScreenState extends State<MainScreen> {
         ],
         currentIndex: _selectedIndex,
         onTap: _onItemTapped,
-        backgroundColor: Colors.black,
-        selectedItemColor: Colors.cyanAccent,
+        backgroundColor: darkSuedeNavy,
+        selectedItemColor: Colors.cyanAccent, // For Home and Profile
         unselectedItemColor: Colors.grey,
+        showSelectedLabels: true,
         showUnselectedLabels: false,
-        type: BottomNavigationBarType
-            .fixed, // Ensures background color is applied
+        type: BottomNavigationBarType.fixed,
       ),
     );
   }

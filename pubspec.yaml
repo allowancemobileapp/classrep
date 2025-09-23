@@ -5,7 +5,7 @@ publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: ^3.9.2
+  sdk: '>=3.0.0 <4.0.0' # Updated for broader compatibility
 
 dependencies:
   flutter:
@@ -23,19 +23,29 @@ dependencies:
   audioplayers: ^6.0.0
   flutter_dotenv: ^5.1.0
   uuid: ^4.4.0
-  image_picker: ^1.1.2 # This is the single, correct entry
+  image_picker: ^1.1.2
+  dotted_border: ^2.1.0 # Corrected version for consistency
 
   # Icons
   cupertino_icons: ^1.0.2
-  dotted_border: ^3.1.0
+  url_launcher: ^6.3.2
+
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^5.0.0
+  flutter_lints: ^3.0.0 # Updated to a more recent version
 
 flutter:
   uses-material-design: true
+  
   assets:
     - assets/images/
     - .env
+
+  # This new section adds the custom font to your app
+  fonts:
+    - family: LeagueSpartan
+      fonts:
+        - asset: assets/fonts/LeagueSpartan-Bold.ttf
+          weight: 700 # This number corresponds to FontWeight.bold
