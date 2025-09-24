@@ -1,5 +1,3 @@
-// /supabase/functions/verify-paystack-payment/index.ts
-
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -17,7 +15,8 @@ serve(async (req) => {
     const { reference } = await req.json()
     if (!reference) throw new Error('Payment reference is missing.')
 
-    const paystackSecret = Deno.env.get('PAYSTACK_SECRET_KEY')
+    // FIX: Using the correct live secret key name to match what's in your dashboard
+    const paystackSecret = Deno.env.get('PAYSTACK_LIVE_SECRET_KEY')
     if (!paystackSecret) throw new Error('Paystack secret key is not set.')
 
     const verifyRes = await fetch(`https://api.paystack.co/transaction/verify/${reference}`, {

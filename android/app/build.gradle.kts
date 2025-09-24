@@ -1,3 +1,6 @@
+import java.util.Properties
+import java.io.FileInputStream
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -23,8 +26,8 @@ android {
         create("release") {
             val propertiesFile = project.file("../key.properties")
             if (propertiesFile.exists()) {
-                val properties = java.util.Properties()
-                properties.load(java.io.FileInputStream(propertiesFile))
+                val properties = Properties()
+                properties.load(FileInputStream(propertiesFile))
                 keyAlias = properties.getProperty("keyAlias")
                 keyPassword = properties.getProperty("keyPassword")
                 storeFile = file(properties.getProperty("storeFile"))
@@ -34,8 +37,7 @@ android {
     }
 
     defaultConfig {
-        // TODO: IMPORTANT! Change this to your own unique Application ID before publishing.
-        // It cannot be changed after you release the app.
+        // IMPORTANT: Change this to your own unique Application ID before publishing.
         applicationId = "com.yourcompany.classrep"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
@@ -45,7 +47,6 @@ android {
 
     buildTypes {
         getByName("release") {
-            // This now correctly uses your release key.
             signingConfig = signingConfigs.getByName("release")
         }
     }

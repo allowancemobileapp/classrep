@@ -23,6 +23,7 @@ class _XAnalyticsScreenState extends State<XAnalyticsScreen> {
   Map<String, dynamic> _creatorStats = {};
   Map<String, dynamic>? _userProfile;
   bool _isProcessingPayment = false;
+  // final String _paystackPlanCode = 'PLN_eomdf3mz9sjg4m3';
 
   // --- NEW STATE VARIABLE FOR BETTER UX ---
   bool _cancellationIsPending = false;
@@ -190,8 +191,10 @@ class _XAnalyticsScreenState extends State<XAnalyticsScreen> {
       final email = _userProfile?['email'] as String?;
       if (email == null) throw Exception('User email not found.');
 
+      // This now makes the simple, secure call.
       final paymentDetails =
-          await SupabaseService.instance.getPaystackCheckoutUrl(email);
+          await SupabaseService.instance.getPaystackCheckoutUrl(email: email);
+
       final checkoutUrl = paymentDetails['authorization_url'];
       final reference = paymentDetails['reference'];
       final url = Uri.parse(checkoutUrl);
@@ -313,6 +316,9 @@ class _XAnalyticsScreenState extends State<XAnalyticsScreen> {
     final balance = _creatorStats['reward_balance'] as num? ?? 0;
     final totalEarned = _creatorStats['total_earned'] as num? ?? 0;
     final progress = (plusAddons % 100) / 100.0;
+    final isEligibleForPayout =
+        balance >= 1000; // Payout is available if balance is ₦1000 or more
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
       child: Column(
@@ -367,16 +373,105 @@ class _XAnalyticsScreenState extends State<XAnalyticsScreen> {
             label: const Text('Withdraw Balance'),
             style: ElevatedButton.styleFrom(
               foregroundColor: Colors.black,
-              backgroundColor: Colors.cyanAccent,
+              backgroundColor:
+                  isEligibleForPayout ? Colors.cyanAccent : Colors.grey[700],
               padding: const EdgeInsets.symmetric(vertical: 16),
               textStyle: const TextStyle(fontWeight: FontWeight.bold),
             ),
-            onPressed: balance > 0
-                ? () {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                        content: Text('Payout feature coming soon!')));
+            onPressed: isEligibleForPayout
+                ? () async {
+                    final amountController = TextEditingController();
+                    final formKey = GlobalKey<FormState>();
+
+                    await showDialog(
+                      context: context,
+                      builder: (dialogContext) {
+                        return AlertDialog(
+                          backgroundColor: lightSuedeNavy,
+                          title: const Text('Request Payout',
+                              style: TextStyle(color: Colors.white)),
+                          content: Form(
+                            key: formKey,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                    'Minimum payout is ₦1,000.\nYour current balance is ₦${balance.toStringAsFixed(2)}.',
+                                    style:
+                                        const TextStyle(color: Colors.white70)),
+                                const SizedBox(height: 16),
+                                TextFormField(
+                                  controller: amountController,
+                                  style: const TextStyle(color: Colors.white),
+                                  keyboardType: TextInputType.number,
+                                  decoration: InputDecoration(
+                                    labelText: 'Amount to Withdraw (₦)',
+                                    labelStyle:
+                                        const TextStyle(color: Colors.white54),
+                                    border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(8)),
+                                  ),
+                                  validator: (value) {
+                                    if (value == null || value.isEmpty) {
+                                      return 'Please enter an amount.';
+                                    }
+                                    final amount = double.tryParse(value);
+                                    if (amount == null) {
+                                      return 'Please enter a valid number.';
+                                    }
+                                    if (amount < 1000) {
+                                      return 'Minimum payout is ₦1,000.';
+                                    }
+                                    if (amount > balance) {
+                                      return 'Amount exceeds your balance.';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () =>
+                                  Navigator.of(dialogContext).pop(),
+                              child: const Text('Cancel'),
+                            ),
+                            ElevatedButton(
+                              onPressed: () async {
+                                if (formKey.currentState!.validate()) {
+                                  Navigator.of(dialogContext)
+                                      .pop(); // Close dialog first
+                                  try {
+                                    final amount =
+                                        double.parse(amountController.text);
+                                    await SupabaseService.instance
+                                        .requestPayout(amount);
+                                    ScaffoldMessenger.of(context)
+                                        .showSnackBar(const SnackBar(
+                                      content: Text(
+                                          'Payout request submitted successfully!'),
+                                      backgroundColor: Colors.green,
+                                    ));
+                                    await _loadData(); // Refresh the balance
+                                  } catch (e) {
+                                    ScaffoldMessenger.of(context)
+                                        .showSnackBar(SnackBar(
+                                      content: Text('Error: ${e.toString()}'),
+                                      backgroundColor: Colors.red,
+                                    ));
+                                  }
+                                }
+                              },
+                              child: const Text('Request Payout'),
+                            ),
+                          ],
+                        );
+                      },
+                    );
                   }
-                : null,
+                : null, // Button is disabled if balance is less than 1000
           ),
         ],
       ),

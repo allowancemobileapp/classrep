@@ -6,9 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:class_rep/shared/services/auth_service.dart';
-import 'dart:convert';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
-import 'package:http/http.dart' as http;
 
 // Helper to access the Supabase client easily.
 final supabase = Supabase.instance.client;
@@ -208,39 +205,20 @@ class SupabaseService {
     return supabase.storage.from('event_images').getPublicUrl(storagePath);
   }
 
-  Future<Map<String, dynamic>> getPaystackCheckoutUrl(String email) async {
-    final secretKey = dotenv.env['PAYSTACK_SECRET_KEY'];
-    final planCode = dotenv.env['PAYSTACK_PLAN_CODE'];
-
-    if (secretKey == null || planCode == null) {
-      throw Exception('Paystack keys or plan code not found in .env file.');
-    }
-
-    final url = Uri.parse('https://api.paystack.co/transaction/initialize');
-
-    final response = await http.post(
-      url,
-      headers: {
-        'Authorization': 'Bearer $secretKey',
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode({
-        'email': email,
-        'amount': 500 * 100,
-        'plan': planCode,
-      }),
+  Future<Map<String, dynamic>> getPaystackCheckoutUrl(
+      {required String email}) async {
+    // This securely calls your server-side function.
+    // The plan code and secret key are now handled on the server.
+    final response = await supabase.functions.invoke(
+      // <-- This was the fix
+      'get-paystack-checkout-url',
+      body: {'email': email},
     );
 
-    if (response.statusCode == 200) {
-      final body = jsonDecode(response.body);
-      return {
-        'authorization_url': body['data']['authorization_url'],
-        'reference': body['data']['reference'],
-      };
-    } else {
-      throw Exception(
-          'Failed to initialize Paystack transaction: ${response.body}');
+    if (response.data['error'] != null) {
+      throw Exception(response.data['error']);
     }
+    return response.data as Map<String, dynamic>;
   }
 
   Future<bool> verifyPayment(String reference) async {
@@ -525,6 +503,22 @@ class SupabaseService {
     } catch (e) {
       print('Error getting public URL for $filePath: $e');
       throw Exception('Could not get public URL for $filePath');
+    }
+  }
+
+  Future<void> requestPayout(double amount) async {
+    try {
+      final response = await supabase.functions.invoke(
+        'request-payout',
+        body: {'amount': amount},
+      );
+      if (response.status != 200) {
+        final errorMsg =
+            response.data?['error'] ?? 'Failed to submit payout request.';
+        throw Exception(errorMsg);
+      }
+    } catch (e) {
+      throw Exception(e.toString());
     }
   }
 }

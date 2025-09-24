@@ -8,20 +8,18 @@ const corsHeaders = {
 }
 
 serve(async (req) => {
-  // Handle CORS preflight request
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
   try {
-    const paystackSecret = Deno.env.get('PAYSTACK_SECRET_KEY')
+    // FIX 1: Using the correct, consistent secret key name
+    const paystackSecret = Deno.env.get('PAYSTACK_LIVE_SECRET_KEY')
     if (!paystackSecret) throw new Error('Paystack secret key is not set in environment variables.')
 
-    // Read the request body as text FIRST for the signature check
     const bodyText = await req.text()
     const signature = req.headers.get('x-paystack-signature')
 
-    // 1. Verify the webhook signature using the raw text body
     const hash = crypto.createHmac('sha512', paystackSecret).update(bodyText).digest('hex')
     if (hash !== signature) {
       return new Response(JSON.stringify({ error: 'Invalid signature' }), {
@@ -30,40 +28,35 @@ serve(async (req) => {
       })
     }
 
-    // Now that signature is verified, parse the text body into JSON
     const body = JSON.parse(bodyText)
     
-    // 2. Check for the subscription creation event
     if (body.event === 'subscription.create') {
       const customerEmail = body.data.customer.email
       
-      // Create a Supabase admin client to bypass RLS
       const supabaseAdmin = createClient(
         Deno.env.get('SUPABASE_URL') ?? '',
         Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-        // THIS IS THE CRUCIAL FIX to ensure RLS is bypassed
         { auth: { persistSession: false } }
       )
 
-      // 3. Find the user by their email
+      // Find the user by their email in your public users table
       const { data: userData, error: userError } = await supabaseAdmin
-        .from('users')
+        .from('users') // CORRECT: Using the 'users' table from your schema
         .select('id')
         .eq('email', customerEmail)
         .single()
 
       if (userError) throw new Error(`User with email ${customerEmail} not found. Details: ${userError.message}`)
       
-      // 4. Update the user's profile to is_plus = true
+      // Update the user's profile to is_plus = true in your public users table
       const { error: updateError } = await supabaseAdmin
-        .from('users')
+        .from('users') // CORRECT: Using the 'users' table from your schema
         .update({ is_plus: true })
         .eq('id', userData.id)
         
       if (updateError) throw new Error(`Failed to update user status: ${updateError.message}`)
     }
     
-    // Return a 200 OK response to Paystack to confirm receipt
     return new Response(JSON.stringify({ status: 'ok' }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })

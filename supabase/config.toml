@@ -64,3 +64,25 @@ entrypoint = "./functions/request-cancellation/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/request-cancellation/*.html" ]
+
+[functions.get-paystack-checkout-url]
+enabled = true
+verify_jwt = true
+import_map = "./functions/get-paystack-checkout-url/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/get-paystack-checkout-url/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/get-paystack-checkout-url/*.html" ]
+
+[functions.request-payout]
+enabled = true
+verify_jwt = true
+import_map = "./functions/request-payout/deno.json"
+# Uncomment to specify a custom file path to the entrypoint.
+# Supported file extensions are: .ts, .js, .mjs, .jsx, .tsx
+entrypoint = "./functions/request-payout/index.ts"
+# Specifies static files to be bundled with the function. Supports glob patterns.
+# For example, if you want to serve static HTML pages in your function:
+# static_files = [ "./functions/request-payout/*.html" ]
