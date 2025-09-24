@@ -754,6 +754,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
     final isMine = event['user_id'] == _currentUserId;
 
     // metadata may be Map or String
+    // ignore: unused_local_variable
     bool commentsEnabled = true;
     final metadata = event['metadata'];
     if (metadata is Map && metadata.containsKey('comments_enabled')) {
@@ -848,6 +849,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
       backgroundColor: Colors.transparent,
       builder: (modalContext) {
         final commentController = TextEditingController();
+        // ignore: unused_local_variable
         bool isPosting = false;
         // local refresh variable
         return StatefulBuilder(builder: (context, setModalState) {
