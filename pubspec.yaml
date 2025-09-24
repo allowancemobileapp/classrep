@@ -25,6 +25,7 @@ dependencies:
   uuid: ^4.4.0
   image_picker: ^1.1.2
   dotted_border: ^2.1.0 # Corrected version for consistency
+  timeago: ^3.6.0
 
   # Icons
   cupertino_icons: ^1.0.2
@@ -35,6 +36,16 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^3.0.0 # Updated to a more recent version
+  flutter_launcher_icons: "^0.13.1"
+
+flutter_launcher_icons:
+  android: "launcher_icon" # Or true for default name
+  ios: true
+  image_path: "assets/images/app_icon.png" # Path to your 1024x1024 PNG icon
+  min_sdk_android: 21 # Set to your app's minimum Android SDK version
+  remove_alpha_ios: true # Recommended for iOS
+  adaptive_icon_background: "#1A1B2C" # Your darkSuedeNavy color
+  adaptive_icon_foreground: "assets/images/app_icon_foreground.png" # See Step 4 for this
 
 flutter:
   uses-material-design: true

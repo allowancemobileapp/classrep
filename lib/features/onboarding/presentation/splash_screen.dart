@@ -1,3 +1,5 @@
+// lib/features/onboarding/presentation/splash_screen.dart
+
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:class_rep/shared/services/auth_service.dart';
@@ -12,7 +14,7 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen> {
-  bool _showButton = false;
+  bool _showContent = false;
   bool _isLoggedIn = false;
 
   @override
@@ -22,19 +24,17 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   void _checkAuthStatusAndAnimate() {
-    // Check if a user is already logged in
     _isLoggedIn = AuthService.instance.currentUser != null;
 
-    // After 2 seconds, fade in the button or text
+    // After a delay, fade in the content
     Timer(const Duration(seconds: 2), () {
       if (mounted) {
-        setState(() => _showButton = true);
+        setState(() => _showContent = true);
       }
     });
   }
 
   void _navigateToNextScreen() {
-    // If logged in, go to the main app. Otherwise, go to the welcome/login/signup flow.
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
         builder: (context) =>
@@ -47,8 +47,7 @@ class _SplashScreenState extends State<SplashScreen> {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: () {
-        // Only allow "tap anywhere" if the user is logged in and the prompt is visible
-        if (_isLoggedIn && _showButton) {
+        if (_isLoggedIn && _showContent) {
           _navigateToNextScreen();
         }
       },
@@ -56,43 +55,80 @@ class _SplashScreenState extends State<SplashScreen> {
         body: Stack(
           fit: StackFit.expand,
           children: [
-            // Your background image
             Image.asset(
-              'assets/images/welcome_background.png', // <-- IMPORTANT: Make sure your image is here
+              'assets/images/welcome_background.png', // Make sure this path is correct
               fit: BoxFit.cover,
             ),
-            // A dark overlay for better text visibility
-            Container(color: Colors.black.withOpacity(0.5)),
-            // The content that fades in
-            Center(
-              child: AnimatedOpacity(
-                opacity: _showButton ? 1.0 : 0.0,
-                duration: const Duration(milliseconds: 500),
-                child: _isLoggedIn
-                    ? const Text(
-                        'Tap anywhere to enter',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 18,
+            Container(color: Colors.black.withOpacity(0.6)),
+
+            // --- THIS IS THE NEW LAYOUT ---
+            Padding(
+              padding:
+                  const EdgeInsets.only(bottom: 60.0, left: 24.0, right: 24.0),
+              child: Column(
+                mainAxisAlignment:
+                    MainAxisAlignment.end, // Aligns content to the bottom
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Stylized App Title at the bottom
+                  RichText(
+                    textAlign: TextAlign.center,
+                    text: const TextSpan(
+                      style: TextStyle(
+                          fontFamily: 'LeagueSpartan',
+                          fontSize: 52,
                           fontWeight: FontWeight.bold,
-                        ),
-                      )
-                    : ElevatedButton(
-                        onPressed: _navigateToNextScreen,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.cyanAccent,
-                          foregroundColor: Colors.black,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 40,
-                            vertical: 15,
+                          fontStyle: FontStyle.italic,
+                          shadows: [
+                            Shadow(blurRadius: 10.0, color: Colors.black54)
+                          ]),
+                      children: <TextSpan>[
+                        TextSpan(
+                            text: 'Class',
+                            style: TextStyle(color: Colors.white)),
+                        TextSpan(
+                            text: '-', style: TextStyle(color: Colors.yellow)),
+                        TextSpan(
+                            text: 'Rep', style: TextStyle(color: Colors.white)),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 120), // Space between title and button
+
+                  // Animated content that fades in
+                  AnimatedOpacity(
+                    opacity: _showContent ? 1.0 : 0.0,
+                    duration: const Duration(milliseconds: 800),
+                    child: _isLoggedIn
+                        ? const Text(
+                            'Tap anywhere to enter',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                shadows: [
+                                  Shadow(blurRadius: 8.0, color: Colors.black87)
+                                ]),
+                          )
+                        : ElevatedButton(
+                            onPressed: _navigateToNextScreen,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.cyanAccent,
+                              foregroundColor: Colors.black,
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              textStyle: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            child: const Text('Get Started'),
                           ),
-                          textStyle: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        child: const Text('Get Started'),
-                      ),
+                  ),
+                ],
               ),
             ),
           ],

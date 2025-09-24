@@ -426,4 +426,105 @@ class SupabaseService {
       return false;
     }
   }
+
+  // --- NEW METHODS FOR THE COMMENT FEATURE ---
+
+// 1. Fetches all comments for a given event ID.
+// --- COMMENT FEATURE: use event_comments and commenter_user_id ---
+
+// 1. Fetch all comments for an event and attach commenter profile as `user`
+  Future<List<Map<String, dynamic>>> fetchCommentsForEvent(
+      String eventId) async {
+    try {
+      // 1) get comments
+      final commentsResponse = await supabase
+          .from('event_comments')
+          .select()
+          .eq('event_id', eventId)
+          .order('created_at', ascending: true);
+
+      final comments = (commentsResponse as List).cast<Map<String, dynamic>>();
+
+      // 2) collect unique commenter ids
+      final Set<String> userIdSet = {};
+      for (final c in comments) {
+        final id = c['commenter_user_id'];
+        if (id != null) userIdSet.add(id.toString());
+      }
+      final userIds = userIdSet.toList();
+
+      // 3) fetch user profiles in one go (if any)
+      Map<String, Map<String, dynamic>> usersMap = {};
+      if (userIds.isNotEmpty) {
+        // IMPORTANT: for UUID columns, don't wrap ids in single quotes here.
+        // Build a parenthesized list like (uuid1,uuid2,uuid3)
+        final idsString = userIds.join(',');
+
+        final usersResponse = await supabase
+            .from('users')
+            .select('id, username, avatar_url')
+            .filter('id', 'in', '($idsString)');
+
+        final users = (usersResponse as List).cast<Map<String, dynamic>>();
+        for (final u in users) {
+          usersMap[u['id'].toString()] = u;
+        }
+      }
+
+      // 4) attach user data to comments and normalize field names for UI
+      final enriched = comments.map((c) {
+        final commenterId = c['commenter_user_id']?.toString();
+        c['user'] = commenterId != null ? usersMap[commenterId] : null;
+        // normalize content name expected by your UI
+        c['content'] = c['text'] ?? c['content'] ?? '';
+        return c;
+      }).toList();
+
+      return enriched;
+    } catch (e) {
+      throw Exception('Error fetching comments: $e');
+    }
+  }
+
+// 2. Add a comment into event_comments (uses commenter_user_id)
+  Future<void> addComment({
+    required String eventId,
+    required String content,
+  }) async {
+    final userId = AuthService.instance.currentUser?.id;
+    if (userId == null) throw Exception('User not logged in');
+    if (content.trim().isEmpty) throw Exception('Comment cannot be empty');
+
+    try {
+      await supabase.from('event_comments').insert({
+        'event_id': eventId,
+        'commenter_user_id': userId,
+        'text': content.trim(),
+      });
+    } catch (e) {
+      throw Exception('Error posting comment: $e');
+    }
+  }
+
+// 3. Delete a specific comment from event_comments
+  Future<void> deleteComment(String commentId) async {
+    try {
+      await supabase.from('event_comments').delete().eq('id', commentId);
+    } catch (e) {
+      throw Exception('Error deleting comment: $e');
+    }
+  }
+
+  // Method to get a public URL for a file in Supabase Storage
+  String getPublicUrl(String filePath) {
+    // Assuming files are in a bucket named 'event_media' (adjust if different)
+    try {
+      final publicUrl =
+          supabase.storage.from('event_media').getPublicUrl(filePath);
+      return publicUrl;
+    } catch (e) {
+      print('Error getting public URL for $filePath: $e');
+      throw Exception('Could not get public URL for $filePath');
+    }
+  }
 }

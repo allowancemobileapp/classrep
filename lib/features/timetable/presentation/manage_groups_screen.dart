@@ -86,7 +86,8 @@ class _ManageGroupsScreenState extends State<ManageGroupsScreen> {
         backgroundColor: darkSuedeNavy,
         title: const Text('Confirm Deletion',
             style: TextStyle(color: Colors.white)),
-        content: const Text('Are you sure you want to delete this group?',
+        content: const Text(
+            'Are you sure you want to delete this group? All events within it will become ungrouped.',
             style: TextStyle(color: Colors.white70)),
         actions: [
           TextButton(
@@ -112,6 +113,25 @@ class _ManageGroupsScreenState extends State<ManageGroupsScreen> {
                 backgroundColor: Colors.red),
           );
         }
+      }
+    }
+  }
+
+  // --- NEW METHOD TO HANDLE VISIBILITY TOGGLE ---
+  Future<void> _toggleVisibility(
+      String groupId, String currentVisibility) async {
+    try {
+      await SupabaseService.instance
+          .toggleGroupVisibility(groupId, currentVisibility);
+      // Refresh the list to show the new icon state immediately
+      await _loadGroups();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text('Error updating visibility: $e'),
+              backgroundColor: Colors.red),
+        );
       }
     }
   }
@@ -182,6 +202,8 @@ class _ManageGroupsScreenState extends State<ManageGroupsScreen> {
                         itemCount: _groups.length,
                         itemBuilder: (context, index) {
                           final group = _groups[index];
+                          // --- START OF UI UPDATE ---
+                          final isPublic = group['visibility'] == 'public';
                           return Card(
                             color: lightSuedeNavy.withOpacity(0.5),
                             shape: RoundedRectangleBorder(
@@ -194,13 +216,34 @@ class _ManageGroupsScreenState extends State<ManageGroupsScreen> {
                                     color: Colors.white,
                                     fontWeight: FontWeight.bold),
                               ),
-                              trailing: IconButton(
-                                icon: const Icon(Icons.delete_outline,
-                                    color: Colors.redAccent),
-                                onPressed: () => _deleteGroup(group['id']),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    tooltip: isPublic
+                                        ? 'Visible to subscribers'
+                                        : 'Private to you',
+                                    icon: Icon(
+                                      isPublic
+                                          ? Icons.visibility
+                                          : Icons.visibility_off,
+                                      color: isPublic
+                                          ? Colors.cyanAccent
+                                          : Colors.white70,
+                                    ),
+                                    onPressed: () => _toggleVisibility(
+                                        group['id'], group['visibility']),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.delete_outline,
+                                        color: Colors.redAccent),
+                                    onPressed: () => _deleteGroup(group['id']),
+                                  ),
+                                ],
                               ),
                             ),
                           );
+                          // --- END OF UI UPDATE ---
                         },
                       ),
           ),

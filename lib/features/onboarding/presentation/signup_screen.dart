@@ -1,5 +1,10 @@
+// lib/features/auth/presentation/signup_screen.dart
+
 import 'package:flutter/material.dart';
 import 'package:class_rep/shared/services/auth_service.dart';
+
+// --- THEME COLORS ---
+const Color darkSuedeNavy = Color(0xFF1A1B2C);
 
 class SignupScreen extends StatefulWidget {
   static const routeName = '/signup';
@@ -21,7 +26,6 @@ class _SignupScreenState extends State<SignupScreen> {
     if (!_formKey.currentState!.validate()) {
       return;
     }
-
     setState(() => _isLoading = true);
     try {
       await AuthService.instance.signUp(
@@ -51,11 +55,39 @@ class _SignupScreenState extends State<SignupScreen> {
     }
   }
 
+  // Helper for consistent input decoration
+  InputDecoration _buildInputDecoration(
+      {required String labelText, Widget? suffixIcon}) {
+    return InputDecoration(
+      labelText: labelText,
+      labelStyle: const TextStyle(color: Colors.white70),
+      suffixIcon: suffixIcon,
+      filled: true,
+      fillColor: Colors.white.withOpacity(0.1),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide.none,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide.none,
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Colors.cyanAccent, width: 1.5),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(title: const Text('Sign Up')),
+      backgroundColor: darkSuedeNavy,
+      appBar: AppBar(
+        backgroundColor: darkSuedeNavy,
+        title: const Text('Sign Up'),
+        elevation: 0,
+      ),
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24.0),
@@ -66,7 +98,8 @@ class _SignupScreenState extends State<SignupScreen> {
               children: [
                 TextFormField(
                   controller: _emailController,
-                  decoration: const InputDecoration(labelText: 'Email'),
+                  style: const TextStyle(color: Colors.white),
+                  decoration: _buildInputDecoration(labelText: 'Email'),
                   keyboardType: TextInputType.emailAddress,
                   validator: (value) => value!.isEmpty || !value.contains('@')
                       ? 'Please enter a valid email'
@@ -75,25 +108,27 @@ class _SignupScreenState extends State<SignupScreen> {
                 const SizedBox(height: 16),
                 TextFormField(
                   controller: _usernameController,
-                  decoration: const InputDecoration(labelText: 'Username'),
+                  style: const TextStyle(color: Colors.white),
+                  decoration: _buildInputDecoration(labelText: 'Username'),
                   validator: (value) =>
                       value!.isEmpty ? 'Please enter a username' : null,
                 ),
                 const SizedBox(height: 16),
                 TextFormField(
                   controller: _passwordController,
-                  decoration: InputDecoration(
+                  style: const TextStyle(color: Colors.white),
+                  decoration: _buildInputDecoration(
                     labelText: 'Password',
                     suffixIcon: IconButton(
                       icon: Icon(
                         _isPasswordVisible
                             ? Icons.visibility
                             : Icons.visibility_off,
+                        color: Colors.white70,
                       ),
                       onPressed: () {
                         setState(
-                          () => _isPasswordVisible = !_isPasswordVisible,
-                        );
+                            () => _isPasswordVisible = !_isPasswordVisible);
                       },
                     ),
                   ),
@@ -102,12 +137,24 @@ class _SignupScreenState extends State<SignupScreen> {
                       ? 'Password must be at least 6 characters'
                       : null,
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 32),
                 _isLoading
-                    ? const Center(child: CircularProgressIndicator())
+                    ? const Center(
+                        child:
+                            CircularProgressIndicator(color: Colors.cyanAccent))
                     : ElevatedButton(
                         onPressed: _submit,
-                        child: const Text('Sign Up'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.cyanAccent,
+                          foregroundColor: Colors.black,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Text('Sign Up',
+                            style: TextStyle(
+                                fontSize: 18, fontWeight: FontWeight.bold)),
                       ),
               ],
             ),

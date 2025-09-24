@@ -1,5 +1,10 @@
+// lib/features/auth/presentation/login_screen.dart
+
 import 'package:flutter/material.dart';
 import 'package:class_rep/shared/services/auth_service.dart';
+
+// --- THEME COLORS ---
+const Color darkSuedeNavy = Color(0xFF1A1B2C);
 
 class LoginScreen extends StatefulWidget {
   static const routeName = '/login';
@@ -20,17 +25,13 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!_formKey.currentState!.validate()) {
       return;
     }
-
     setState(() => _isLoading = true);
-
     try {
       await AuthService.instance.signInWithPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
       );
-
       if (mounted) {
-        // THE ONLY CHANGE IS HERE: We navigate to '/main' instead of '/timetable'
         Navigator.of(context).pushReplacementNamed('/main');
       }
     } catch (e) {
@@ -49,13 +50,39 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  // In _LoginScreenState
+  // Helper for consistent input decoration
+  InputDecoration _buildInputDecoration(
+      {required String labelText, Widget? suffixIcon}) {
+    return InputDecoration(
+      labelText: labelText,
+      labelStyle: const TextStyle(color: Colors.white70),
+      suffixIcon: suffixIcon,
+      filled: true,
+      fillColor: Colors.white.withOpacity(0.1),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide.none,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide.none,
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Colors.cyanAccent, width: 1.5),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(title: const Text('Log In')),
+      backgroundColor: darkSuedeNavy,
+      appBar: AppBar(
+        backgroundColor: darkSuedeNavy,
+        title: const Text('Log In'),
+        elevation: 0,
+      ),
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24.0),
@@ -66,9 +93,8 @@ class _LoginScreenState extends State<LoginScreen> {
               children: [
                 TextFormField(
                   controller: _emailController,
-                  // --- THIS IS THE FIX ---
-                  decoration: const InputDecoration(labelText: 'Email'),
-                  // --- END OF FIX ---
+                  style: const TextStyle(color: Colors.white),
+                  decoration: _buildInputDecoration(labelText: 'Email'),
                   validator: (value) =>
                       value!.isEmpty ? 'Please enter your email' : null,
                   keyboardType: TextInputType.emailAddress,
@@ -76,18 +102,19 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 16),
                 TextFormField(
                   controller: _passwordController,
-                  decoration: InputDecoration(
+                  style: const TextStyle(color: Colors.white),
+                  decoration: _buildInputDecoration(
                     labelText: 'Password',
                     suffixIcon: IconButton(
                       icon: Icon(
                         _isPasswordVisible
                             ? Icons.visibility
                             : Icons.visibility_off,
+                        color: Colors.white70,
                       ),
                       onPressed: () {
                         setState(
-                          () => _isPasswordVisible = !_isPasswordVisible,
-                        );
+                            () => _isPasswordVisible = !_isPasswordVisible);
                       },
                     ),
                   ),
@@ -95,12 +122,24 @@ class _LoginScreenState extends State<LoginScreen> {
                   validator: (value) =>
                       value!.isEmpty ? 'Please enter your password' : null,
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 32),
                 _isLoading
-                    ? const Center(child: CircularProgressIndicator())
+                    ? const Center(
+                        child:
+                            CircularProgressIndicator(color: Colors.cyanAccent))
                     : ElevatedButton(
                         onPressed: _submit,
-                        child: const Text('Log In'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.cyanAccent,
+                          foregroundColor: Colors.black,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Text('Log In',
+                            style: TextStyle(
+                                fontSize: 18, fontWeight: FontWeight.bold)),
                       ),
               ],
             ),

@@ -1,7 +1,7 @@
 // lib/features/timetable/presentation/timetable_screen.dart
 
+import 'dart:convert';
 import 'dart:io';
-import 'dart:ui';
 import 'package:class_rep/features/timetable/presentation/manage_groups_screen.dart';
 import 'package:class_rep/shared/services/auth_service.dart';
 import 'package:class_rep/shared/services/supabase_service.dart';
@@ -564,6 +564,21 @@ class _TimetableScreenState extends State<TimetableScreen> {
     final linkUrl = event['url'] as String?;
     final isMine = event['user_id'] == _currentUserId;
 
+    // metadata may be Map or String
+    bool commentsEnabled = true;
+    final metadata = event['metadata'];
+    if (metadata is Map && metadata.containsKey('comments_enabled')) {
+      commentsEnabled = metadata['comments_enabled'] == true;
+    } else if (metadata is String) {
+      try {
+        final parsed = metadata.isNotEmpty
+            ? Map<String, dynamic>.from(jsonDecode(metadata))
+            : {};
+        if (parsed.containsKey('comments_enabled'))
+          commentsEnabled = parsed['comments_enabled'] == true;
+      } catch (_) {}
+    }
+
     return Card(
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -682,15 +697,41 @@ class _TimetableScreenState extends State<TimetableScreen> {
                         ],
                       ),
                     ),
-                    const SizedBox(width: 16),
-                    Text(startTime,
-                        style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                            shadows: [
-                              Shadow(blurRadius: 8, color: Colors.black87)
-                            ])),
+                    const SizedBox(width: 12),
+                    Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // COMMENT ICON (Apple style)
+                            IconButton(
+                              icon: Icon(
+                                CupertinoIcons.bubble_left,
+                                color: commentsEnabled
+                                    ? Colors.cyanAccent
+                                    : Colors.white38,
+                              ),
+                              onPressed: commentsEnabled
+                                  ? () => _openCommentsSheet(
+                                      event['id'].toString(), title, event)
+                                  : null,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(startTime,
+                                style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 22,
+                                    fontWeight: FontWeight.bold,
+                                    shadows: [
+                                      Shadow(
+                                          blurRadius: 8, color: Colors.black87)
+                                    ])),
+                          ],
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -711,6 +752,21 @@ class _TimetableScreenState extends State<TimetableScreen> {
     final groupName = event['group_name'] as String?;
     final linkUrl = event['url'] as String?;
     final isMine = event['user_id'] == _currentUserId;
+
+    // metadata may be Map or String
+    bool commentsEnabled = true;
+    final metadata = event['metadata'];
+    if (metadata is Map && metadata.containsKey('comments_enabled')) {
+      commentsEnabled = metadata['comments_enabled'] == true;
+    } else if (metadata is String) {
+      try {
+        final parsed = metadata.isNotEmpty
+            ? Map<String, dynamic>.from(jsonDecode(metadata))
+            : {};
+        if (parsed.containsKey('comments_enabled'))
+          commentsEnabled = parsed['comments_enabled'] == true;
+      } catch (_) {}
+    }
 
     return Card(
       color: lightSuedeNavy.withOpacity(0.5),
@@ -766,6 +822,14 @@ class _TimetableScreenState extends State<TimetableScreen> {
                   }
                 },
               ),
+            // COMMENT ICON (Apple style)
+            IconButton(
+              icon: const Icon(CupertinoIcons.bubble_left),
+              color: Colors.cyanAccent,
+              onPressed: () =>
+                  _openCommentsSheet(event['id'].toString(), title, event),
+            ),
+            const SizedBox(width: 8),
             Text(startTime,
                 style: const TextStyle(
                     color: Colors.white, fontWeight: FontWeight.bold)),
@@ -773,6 +837,265 @@ class _TimetableScreenState extends State<TimetableScreen> {
         ),
         onTap: isMine ? () => _showAddEditEventModal(event: event) : null,
       ),
+    );
+  }
+
+  Future<void> _openCommentsSheet(
+      String eventId, String eventTitle, Map event) async {
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (modalContext) {
+        final commentController = TextEditingController();
+        bool isPosting = false;
+        // local refresh variable
+        return StatefulBuilder(builder: (context, setModalState) {
+          return DraggableScrollableSheet(
+            initialChildSize: 0.7,
+            minChildSize: 0.3,
+            maxChildSize: 0.95,
+            expand: false,
+            builder: (context, scrollController) {
+              return GlassContainer(
+                borderRadius: 20.0,
+                padding: EdgeInsets.only(
+                  top: 12,
+                  left: 12,
+                  right: 12,
+                  bottom: MediaQuery.of(context).viewInsets.bottom + 12,
+                ),
+                child: Column(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 4,
+                      margin: const EdgeInsets.only(bottom: 12),
+                      decoration: BoxDecoration(
+                          color: Colors.grey[700],
+                          borderRadius: BorderRadius.circular(10)),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'Comments — $eventTitle',
+                              style: const TextStyle(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          IconButton(
+                              onPressed: () => Navigator.of(context).pop(),
+                              icon: const Icon(Icons.close,
+                                  color: Colors.white70))
+                        ],
+                      ),
+                    ),
+                    const Divider(color: lightSuedeNavy),
+                    Expanded(
+                      child: FutureBuilder<List<Map<String, dynamic>>>(
+                        future: SupabaseService.instance
+                            .fetchCommentsForEvent(eventId),
+                        builder: (context, snapshot) {
+                          if (snapshot.connectionState ==
+                              ConnectionState.waiting) {
+                            return const Center(
+                                child: CircularProgressIndicator(
+                                    color: Colors.cyanAccent));
+                          }
+                          if (snapshot.hasError) {
+                            return Center(
+                                child: Text('Error: ${snapshot.error}',
+                                    style: const TextStyle(color: Colors.red)));
+                          }
+                          final comments = snapshot.data ?? [];
+                          if (comments.isEmpty) {
+                            return const Center(
+                                child: Text('No comments yet. Be the first!',
+                                    style: TextStyle(color: Colors.white70)));
+                          }
+                          return ListView.separated(
+                            controller: scrollController,
+                            itemCount: comments.length,
+                            separatorBuilder: (_, __) =>
+                                const Divider(color: lightSuedeNavy),
+                            itemBuilder: (ctx, idx) {
+                              final c = comments[idx];
+                              // SupabaseService.fetchCommentsForEvent selected '*, user:user_id(username, avatar_url)'
+                              final user = c['user'] as Map<String, dynamic>?;
+                              final commenterName =
+                                  user?['username'] ?? 'Someone';
+                              final commenterAvatar =
+                                  user?['avatar_url'] as String?;
+                              final commentText =
+                                  c['content'] ?? c['text'] ?? '';
+                              final createdAt = c['created_at'] != null
+                                  ? DateFormat.yMMMd().add_jm().format(
+                                      DateTime.parse(c['created_at']).toLocal())
+                                  : '';
+
+                              final commentId = c['id']?.toString();
+                              final commentOwnerId = c['user_id']?.toString() ??
+                                  c['commenter_user_id']?.toString();
+
+                              return ListTile(
+                                leading: CircleAvatar(
+                                  backgroundColor: lightSuedeNavy,
+                                  backgroundImage: commenterAvatar != null
+                                      ? NetworkImage(commenterAvatar)
+                                      : null,
+                                  child: commenterAvatar == null
+                                      ? Text(commenterName[0].toUpperCase())
+                                      : null,
+                                ),
+                                title: Text('@$commenterName',
+                                    style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold)),
+                                subtitle: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const SizedBox(height: 4),
+                                    Text(commentText,
+                                        style: const TextStyle(
+                                            color: Colors.white70)),
+                                    const SizedBox(height: 6),
+                                    Text(createdAt,
+                                        style: const TextStyle(
+                                            color: Colors.white38,
+                                            fontSize: 12)),
+                                  ],
+                                ),
+                                trailing: (commentOwnerId == _currentUserId)
+                                    ? IconButton(
+                                        icon: const Icon(Icons.delete_outline,
+                                            color: Colors.redAccent),
+                                        onPressed: () async {
+                                          // confirm
+                                          final confirm =
+                                              await showDialog<bool>(
+                                            context: context,
+                                            builder: (dc) => AlertDialog(
+                                              backgroundColor: darkSuedeNavy,
+                                              title: const Text(
+                                                  'Delete comment?',
+                                                  style: TextStyle(
+                                                      color: Colors.white)),
+                                              actions: [
+                                                TextButton(
+                                                    onPressed: () =>
+                                                        Navigator.of(dc)
+                                                            .pop(false),
+                                                    child:
+                                                        const Text('Cancel')),
+                                                TextButton(
+                                                    onPressed: () =>
+                                                        Navigator.of(dc)
+                                                            .pop(true),
+                                                    child: const Text('Delete',
+                                                        style: TextStyle(
+                                                            color: Colors
+                                                                .redAccent))),
+                                              ],
+                                            ),
+                                          );
+                                          if (confirm == true &&
+                                              commentId != null) {
+                                            try {
+                                              await SupabaseService.instance
+                                                  .deleteComment(commentId);
+                                              setModalState(
+                                                  () {}); // refresh FutureBuilder
+                                            } catch (e) {
+                                              if (!mounted) return;
+                                              ScaffoldMessenger.of(context)
+                                                  .showSnackBar(SnackBar(
+                                                      content: Text(
+                                                          'Error deleting comment: $e'),
+                                                      backgroundColor:
+                                                          Colors.red));
+                                            }
+                                          }
+                                        },
+                                      )
+                                    : null,
+                              );
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                    const Divider(color: lightSuedeNavy),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8.0, vertical: 6.0),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: commentController,
+                              style: const TextStyle(color: Colors.white),
+                              decoration: InputDecoration(
+                                hintText: 'Write a comment...',
+                                hintStyle:
+                                    const TextStyle(color: Colors.white38),
+                                filled: true,
+                                fillColor: Colors.white.withOpacity(0.03),
+                                border: OutlineInputBorder(
+                                  borderSide: BorderSide.none,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                contentPadding: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 12),
+                              ),
+                              minLines: 1,
+                              maxLines: 4,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          StatefulBuilder(builder: (c2, setLocal) {
+                            return IconButton(
+                              icon: const Icon(Icons.send),
+                              color: Colors.cyanAccent,
+                              onPressed: () async {
+                                final text = commentController.text.trim();
+                                if (text.isEmpty) return;
+                                setLocal(() {});
+                                try {
+                                  await SupabaseService.instance.addComment(
+                                      eventId: eventId, content: text);
+                                  commentController.clear();
+                                  // re-render the FutureBuilder by calling setModalState (causes a refetch)
+                                  setModalState(() {});
+                                  // Also notify the event creator via notifications function if you want
+                                  await _loadAllData(); // refresh events/notifications count if needed
+                                } catch (e) {
+                                  if (!mounted) return;
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                          content:
+                                              Text('Error posting comment: $e'),
+                                          backgroundColor: Colors.red));
+                                }
+                              },
+                            );
+                          })
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          );
+        });
+      },
     );
   }
 

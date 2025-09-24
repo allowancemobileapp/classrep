@@ -1,15 +1,19 @@
+// lib/features/auth/presentation/welcome_screen.dart
+
 import 'package:flutter/material.dart';
 import 'login_screen.dart';
 import 'signup_screen.dart';
+
+// --- THEME COLORS ---
+const Color darkSuedeNavy = Color(0xFF1A1B2C);
 
 class WelcomeScreen extends StatelessWidget {
   const WelcomeScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    // You can style this screen further with your logo or branding
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: darkSuedeNavy,
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(24.0),
@@ -18,22 +22,33 @@ class WelcomeScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const Spacer(),
-              const Text(
-                'Welcome to Class Rep',
+              // Stylized App Title
+              RichText(
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 32,
-                  fontWeight: FontWeight.bold,
+                text: const TextSpan(
+                  style: TextStyle(
+                    fontFamily: 'LeagueSpartan', // Make sure you have this font
+                    fontSize: 42,
+                    fontWeight: FontWeight.bold,
+                    fontStyle: FontStyle.italic,
+                  ),
+                  children: <TextSpan>[
+                    TextSpan(
+                        text: 'Class', style: TextStyle(color: Colors.white)),
+                    TextSpan(text: '-', style: TextStyle(color: Colors.yellow)),
+                    TextSpan(
+                        text: 'Rep', style: TextStyle(color: Colors.white)),
+                  ],
                 ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
               const Text(
                 'Your collaborative timetable, simplified.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: Colors.white70, fontSize: 18),
               ),
               const Spacer(),
+              // Styled Buttons
               ElevatedButton(
                 onPressed: () {
                   Navigator.of(context).push(
@@ -44,8 +59,13 @@ class WelcomeScreen extends StatelessWidget {
                   backgroundColor: Colors.cyanAccent,
                   foregroundColor: Colors.black,
                   padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
-                child: const Text('Log In', style: TextStyle(fontSize: 18)),
+                child: const Text('Log In',
+                    style:
+                        TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               ),
               const SizedBox(height: 16),
               OutlinedButton(
@@ -58,8 +78,13 @@ class WelcomeScreen extends StatelessWidget {
                   foregroundColor: Colors.white,
                   side: const BorderSide(color: Colors.white54),
                   padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
-                child: const Text('Sign Up', style: TextStyle(fontSize: 18)),
+                child: const Text('Sign Up',
+                    style:
+                        TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               ),
               const SizedBox(height: 40),
             ],
