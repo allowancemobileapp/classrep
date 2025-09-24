@@ -44,9 +44,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (mounted) {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text('Error loading profile: $e'),
-              backgroundColor: Colors.red),
+          const SnackBar(
+            content: Text(
+                'Could not load your profile. Please check your connection.'),
+            backgroundColor: Colors.redAccent,
+          ),
         );
       }
     }

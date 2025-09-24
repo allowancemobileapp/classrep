@@ -88,9 +88,20 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         }
       } catch (e) {
         if (mounted) {
+          final errorString = e.toString().toLowerCase();
+          String errorMessage = 'Failed to save profile. Please try again.';
+
+          // Check for the specific Supabase error for a unique constraint violation
+          if (errorString.contains('duplicate key') &&
+              errorString.contains('username')) {
+            errorMessage =
+                'This username is already taken. Please choose another.';
+          }
+
           ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: Text('Error saving profile: $e'),
-              backgroundColor: Colors.red));
+            content: Text(errorMessage),
+            backgroundColor: Colors.redAccent,
+          ));
         }
       } finally {
         if (mounted) setState(() => _isLoading = false);

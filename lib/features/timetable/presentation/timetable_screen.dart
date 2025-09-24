@@ -70,9 +70,13 @@ class _TimetableScreenState extends State<TimetableScreen> {
       if (mounted) {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text('Error loading data: $e'),
-              backgroundColor: Colors.red),
+          const SnackBar(
+            content: Text(
+              'Could not refresh timetable. Please check your internet and try again.',
+              style: TextStyle(color: Colors.white),
+            ),
+            backgroundColor: Colors.redAccent,
+          ),
         );
       }
     }
@@ -324,7 +328,6 @@ class _TimetableScreenState extends State<TimetableScreen> {
                 leading: CircleAvatar(
                   radius: 24,
                   backgroundColor: lightSuedeNavy,
-                  // --- START OF UPDATE ---
                   backgroundImage: _userProfile?['avatar_url'] != null
                       ? NetworkImage(_userProfile!['avatar_url'])
                       : null,
@@ -337,7 +340,6 @@ class _TimetableScreenState extends State<TimetableScreen> {
                               color: Colors.white, fontWeight: FontWeight.bold),
                         )
                       : null,
-                  // --- END OF UPDATE ---
                 ),
                 title: Text(
                   '@$displayUsername',
@@ -387,24 +389,31 @@ class _TimetableScreenState extends State<TimetableScreen> {
                                   content: Text('Timetable added!'),
                                   backgroundColor: Colors.green));
                         } catch (e) {
-                          if (!mounted) return;
-                          // --- START OF THE FIX ---
-                          // Check for our specific error message
-                          if (e.toString().contains('Already subscribed')) {
-                            ScaffoldMessenger.of(context)
-                                .showSnackBar(const SnackBar(
-                              content: Text(
-                                  'You are already subscribed to this user.'),
-                              backgroundColor: Colors.orange,
-                            ));
+                          String errorMessage;
+                          Color errorColor = Colors.redAccent;
+
+                          final errorString = e.toString().toLowerCase();
+
+                          if (errorString.contains('already subscribed')) {
+                            errorMessage =
+                                'You are already subscribed to this user.';
+                            errorColor = Colors.orange;
+                          } else if (errorString.contains('not found') ||
+                              errorString.contains('no rows')) {
+                            errorMessage =
+                                'Could not find a user with that username.';
                           } else {
-                            // Show a generic error for other issues
-                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                              content: Text('Error: $e'),
-                              backgroundColor: Colors.red,
-                            ));
+                            errorMessage =
+                                'An unexpected error occurred. Please try again.';
                           }
-                          // --- END OF THE FIX ---
+
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(errorMessage),
+                              backgroundColor: errorColor,
+                            ),
+                          );
                         }
                       },
                     ),
@@ -1299,7 +1308,6 @@ class _TimetableScreenState extends State<TimetableScreen> {
                           final startDateTime = DateTime(day.year, day.month,
                               day.day, startTime.hour, startTime.minute);
 
-                          // --- START OF FIX ---
                           var endDateTime = DateTime(day.year, day.month,
                               day.day, endTime.hour, endTime.minute);
 
@@ -1307,7 +1315,6 @@ class _TimetableScreenState extends State<TimetableScreen> {
                             endDateTime =
                                 endDateTime.add(const Duration(days: 1));
                           }
-                          // --- END OF FIX ---
 
                           String? finalImageUrl = existingImageUrl;
                           if (pickedImage != null) {
@@ -1345,9 +1352,16 @@ class _TimetableScreenState extends State<TimetableScreen> {
                             await _loadAllData();
                           } catch (e) {
                             if (!mounted) return;
-                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                                content: Text('Error: $e'),
-                                backgroundColor: Colors.red));
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  isEditing
+                                      ? 'Could not save changes. Please try again.'
+                                      : 'Could not create event. Please try again.',
+                                ),
+                                backgroundColor: Colors.redAccent,
+                              ),
+                            );
                           }
                         }
                       },
@@ -1396,9 +1410,12 @@ class _TimetableScreenState extends State<TimetableScreen> {
                             } catch (e) {
                               if (!mounted) return;
                               ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                      content: Text('Error deleting event: $e'),
-                                      backgroundColor: Colors.red));
+                                const SnackBar(
+                                  content: Text(
+                                      'Could not delete event. Please try again.'),
+                                  backgroundColor: Colors.redAccent,
+                                ),
+                              );
                             }
                           }
                         },

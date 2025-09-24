@@ -67,9 +67,10 @@ class _XAnalyticsScreenState extends State<XAnalyticsScreen> {
       if (mounted) {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text('Error loading data: $e'),
-              backgroundColor: Colors.red),
+          const SnackBar(
+              content: Text(
+                  'Could not load analytics. Please check your connection.'),
+              backgroundColor: Colors.redAccent),
         );
       }
     }
@@ -218,10 +219,10 @@ class _XAnalyticsScreenState extends State<XAnalyticsScreen> {
                       if (mounted) Navigator.of(dialogContext).pop(success);
                     } catch (e) {
                       if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                            content:
-                                Text("Verification Error: ${e.toString()}"),
-                            backgroundColor: Colors.red));
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                            content: Text(
+                                "Payment verification failed. Please try again."),
+                            backgroundColor: Colors.redAccent));
                         Navigator.of(dialogContext).pop(false);
                       }
                     }
@@ -245,7 +246,11 @@ class _XAnalyticsScreenState extends State<XAnalyticsScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(e.toString()), backgroundColor: Colors.red));
+          const SnackBar(
+              content: Text(
+                  'Could not start the upgrade process. Please try again later.'),
+              backgroundColor: Colors.redAccent),
+        );
       }
     } finally {
       if (mounted) {
@@ -290,9 +295,10 @@ class _XAnalyticsScreenState extends State<XAnalyticsScreen> {
         }
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: Text('Error: ${e.toString()}'),
-              backgroundColor: Colors.red));
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text(
+                  'Could not submit cancellation request. Please try again.'),
+              backgroundColor: Colors.redAccent));
         }
       }
     }
@@ -380,37 +386,67 @@ class _XAnalyticsScreenState extends State<XAnalyticsScreen> {
   Widget _buildUpgradeToEarnPrompt() {
     return Builder(
       builder: (BuildContext context) {
-        return Center(
-          child: Padding(
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(24.0),
+          child: GlassContainer(
             padding: const EdgeInsets.all(24.0),
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Icon(Icons.lock_outline,
-                    color: Colors.amberAccent, size: 48),
+                const Icon(
+                  Icons.workspace_premium_outlined,
+                  color: Colors.amberAccent,
+                  size: 64,
+                ),
                 const SizedBox(height: 16),
                 const Text(
-                  'Earnings are for Plus Subscribers',
+                  'Unlock Your Creator Earnings',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold),
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
                 const SizedBox(height: 8),
                 const Text(
-                  'Upgrade your account in the "Subscription" tab to start earning rewards from your timetable.',
+                  'Join Class-Rep Plus to access exclusive creator features:',
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.white70),
+                  style: TextStyle(color: Colors.white70, fontSize: 16),
                 ),
                 const SizedBox(height: 24),
+                const Divider(color: lightSuedeNavy),
+                const SizedBox(height: 16),
+
+                // Re-using your existing _buildBenefitRow to list perks
+                _buildBenefitRow(
+                  Icons.monetization_on_outlined,
+                  'Become eligible for creator rewards',
+                ),
+                _buildBenefitRow(
+                  Icons.group_add_outlined,
+                  'Let unlimited users add your timetable',
+                ),
+                _buildBenefitRow(
+                  Icons.bar_chart_rounded,
+                  'Track your subscriber growth',
+                ),
+                const SizedBox(height: 32),
+
+                // Call to action button
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     foregroundColor: Colors.black,
                     backgroundColor: Colors.cyanAccent,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    textStyle: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   child: const Text('Go to Subscription'),
                   onPressed: () {
+                    // This function switches to the 'Subscription' tab
                     DefaultTabController.of(context).animateTo(1);
                   },
                 ),
