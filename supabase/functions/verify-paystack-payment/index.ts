@@ -1,3 +1,5 @@
+// /supabase/functions/verify-paystack-payment/index.ts
+
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
@@ -18,51 +20,61 @@ serve(async (req) => {
     const paystackSecret = Deno.env.get('PAYSTACK_SECRET_KEY')
     if (!paystackSecret) throw new Error('Paystack secret key is not set.')
 
-    // 1. Call Paystack to verify the transaction
-    const paystackResponse = await fetch(`https://api.paystack.co/transaction/verify/${reference}`, {
+    const verifyRes = await fetch(`https://api.paystack.co/transaction/verify/${reference}`, {
       headers: { 'Authorization': `Bearer ${paystackSecret}` },
     })
-
-    if (!paystackResponse.ok) {
-      throw new Error('Failed to verify transaction with Paystack.')
+    
+    if (!verifyRes.ok) {
+        const errorBody = await verifyRes.text();
+        throw new Error(`Failed to verify transaction with Paystack: ${errorBody}`)
+    }
+    
+    const verifyBody = await verifyRes.json()
+    const verifyData = verifyBody.data
+    
+    if (verifyData.status !== 'success') {
+        throw new Error(`Payment was not successful. Status: ${verifyData.status}`)
     }
 
-    const paystackData = await paystackResponse.json()
+    const supabaseAdmin = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+      { auth: { persistSession: false } }
+    )
 
-    // 2. Check if the payment was successful
-    if (paystackData.data.status === 'success') {
-      const customerEmail = paystackData.data.customer.email
+    const customerEmail = verifyData.customer.email
+    const { data: userData, error: userError } = await supabaseAdmin.from('users').select('id').eq('email', customerEmail).single()
+    if (userError || !userData) {
+        throw new Error(`User with email ${customerEmail} not found.`)
+    }
 
-      const supabaseAdmin = createClient(
-        Deno.env.get('SUPABASE_URL') ?? '',
-        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-        { auth: { persistSession: false } }
-      )
+    await supabaseAdmin.from('users').update({ is_plus: true }).eq('id', userData.id)
 
-      // 3. Find the user by email
-      const { data: userData, error: userError } = await supabaseAdmin
-        .from('users')
-        .select('id')
-        .eq('email', customerEmail)
-        .single()
+    const authorization = verifyData.authorization;
+    if (authorization && authorization.authorization_code) {
+      const { error: upsertError } = await supabaseAdmin.from('subscriptions').upsert({
+        user_id: userData.id,
+        provider: 'paystack',
+        status: 'active',
+        plan_code: verifyData.plan,
+        provider_subscription_id: authorization.authorization_code,
+      }, { onConflict: 'user_id' });
 
-      if (userError) throw new Error(`User not found: ${userError.message}`)
+      if (upsertError) {
+          throw new Error(`Failed to save subscription record: ${upsertError.message}`);
+      }
+    }
 
-      // 4. Update the user's profile to is_plus = true
-      const { error: updateError } = await supabaseAdmin
-        .from('users')
-        .update({ is_plus: true })
-        .eq('id', userData.id)
-
-      if (updateError) throw new Error(`Failed to update user: ${updateError.message}`)
-
-      return new Response(JSON.stringify({ status: 'success', message: 'User status updated.' }), {
+    return new Response(JSON.stringify({ 
+        status: 'success', 
+        message: 'User status updated and subscription recorded.' 
+    }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    } else {
-      throw new Error('Payment was not successful.')
-    }
+        status: 200,
+    })
+
   } catch (error) {
+    console.error('Verification Error:', error.message);
     return new Response(JSON.stringify({ error: error.message }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 400,

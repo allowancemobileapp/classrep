@@ -249,13 +249,33 @@ class SupabaseService {
         'verify-paystack-payment',
         body: {'reference': reference},
       );
-      if (response.data['status'] == 'success') {
-        return true;
-      } else {
-        throw Exception(response.data['error'] ?? 'Verification failed.');
+
+      // This is the robust fix. We safely check the response.
+      final responseData = response.data;
+
+      // If the function call itself fails (status != 200) or if it returns an error object,
+      // we throw a clear exception that the UI can catch.
+      if (response.status != 200 ||
+          (responseData is Map && responseData.containsKey('error'))) {
+        final errorMsg = (responseData is Map && responseData['error'] != null)
+            ? responseData['error'].toString()
+            : 'An unknown verification error occurred.';
+        throw Exception(errorMsg);
       }
+
+      // If we have a 200 status and no error key, it's a success.
+      return true;
+    } on FunctionException catch (e) {
+      // This catches errors from the Supabase client itself.
+      final details = e.details;
+      String errorMessage = 'Verification failed.';
+      if (details is Map && details.containsKey('error')) {
+        errorMessage = details['error'].toString();
+      }
+      throw Exception(errorMessage);
     } catch (e) {
-      throw Exception('Error calling verification function: $e');
+      // A general catch-all for other errors.
+      throw Exception('An unexpected error occurred: ${e.toString()}');
     }
   }
 
@@ -367,5 +387,43 @@ class SupabaseService {
         .update({'is_read': true})
         .eq('recipient_user_id', userId)
         .eq('is_read', false);
+  }
+
+  Future<void> requestCancellation() async {
+    try {
+      final response = await supabase.functions.invoke('request-cancellation');
+      if (response.status != 200) {
+        // Try to get a more specific error message from the function if it exists
+        final errorMsg =
+            response.data?['error'] ?? 'Failed to submit cancellation request.';
+        throw Exception(errorMsg);
+      }
+    } catch (e) {
+      // Re-throw with a more helpful message for the UI
+      throw Exception(
+          'Error calling request-cancellation function: ${e.toString()}');
+    }
+  }
+
+  Future<bool> hasPendingCancellation() async {
+    final userId = AuthService.instance.currentUser?.id;
+    if (userId == null) return false; // If no user, no pending request.
+
+    try {
+      final response = await supabase
+          .from('cancellation_requests')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('status', 'pending')
+          .limit(1)
+          .maybeSingle();
+
+      // If the response is not null, a pending request was found.
+      return response != null;
+    } catch (e) {
+      // If there's an error, log it and return false to prevent blocking the UI.
+      print('Error checking for pending cancellation: $e');
+      return false;
+    }
   }
 }

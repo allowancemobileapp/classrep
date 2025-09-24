@@ -21,10 +21,11 @@ class _XAnalyticsScreenState extends State<XAnalyticsScreen> {
   bool _isLoading = true;
   bool _isPremium = false;
   Map<String, dynamic> _creatorStats = {};
-  Map<String, dynamic>? _userProfile; // To get the user's email
-
-  // 2. Add a state variable for the payment process
+  Map<String, dynamic>? _userProfile;
   bool _isProcessingPayment = false;
+
+  // --- NEW STATE VARIABLE FOR BETTER UX ---
+  bool _cancellationIsPending = false;
 
   @override
   void initState() {
@@ -40,19 +41,25 @@ class _XAnalyticsScreenState extends State<XAnalyticsScreen> {
       return;
     }
     try {
+      // We now also check for a pending cancellation request
       final profileFuture = SupabaseService.instance.fetchUserProfile(userId);
       final statsFuture = SupabaseService.instance.fetchCreatorStats();
+      final pendingCancellationFuture =
+          SupabaseService.instance.hasPendingCancellation();
 
-      final results = await Future.wait([profileFuture, statsFuture]);
+      final results = await Future.wait(
+          [profileFuture, statsFuture, pendingCancellationFuture]);
 
-      final profile = results[0];
-      final stats = results[1];
+      final profile = results[0] as Map<String, dynamic>;
+      final stats = results[1] as Map<String, dynamic>;
+      final hasPendingCancellation = results[2] as bool;
 
       if (mounted) {
         setState(() {
-          _userProfile = profile; // Store the user profile
+          _userProfile = profile;
           _isPremium = profile['is_plus'] as bool? ?? false;
           _creatorStats = stats;
+          _cancellationIsPending = hasPendingCancellation;
           _isLoading = false;
         });
       }
@@ -61,7 +68,7 @@ class _XAnalyticsScreenState extends State<XAnalyticsScreen> {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text('Error loading analytics: $e'),
+              content: Text('Error loading data: $e'),
               backgroundColor: Colors.red),
         );
       }
@@ -148,119 +155,158 @@ class _XAnalyticsScreenState extends State<XAnalyticsScreen> {
                             strokeWidth: 3, color: Colors.black),
                       )
                     : const Text('Upgrade to Plus - ₦500/month'),
-                onPressed: _isProcessingPayment
-                    ? null
-                    : () async {
-                        setState(() => _isProcessingPayment = true);
-
-                        try {
-                          final email = _userProfile?['email'] as String?;
-                          if (email == null)
-                            throw Exception('User email not found.');
-
-                          final paymentDetails = await SupabaseService.instance
-                              .getPaystackCheckoutUrl(email);
-                          final checkoutUrl =
-                              paymentDetails['authorization_url'];
-                          final reference = paymentDetails['reference'];
-
-                          final url = Uri.parse(checkoutUrl);
-                          if (await canLaunchUrl(url)) {
-                            await launchUrl(url,
-                                mode: LaunchMode.externalApplication);
-
-                            // After launching, show a confirmation dialog
-                            if (mounted) {
-                              final bool? verified = await showDialog<bool>(
-                                context: context,
-                                barrierDismissible: false,
-                                builder: (dialogContext) => AlertDialog(
-                                  backgroundColor: darkSuedeNavy,
-                                  title: const Text('Confirm Your Payment',
-                                      style: TextStyle(color: Colors.white)),
-                                  content: const Text(
-                                      'After completing the payment in your browser, tap "Verify" to activate your subscription.',
-                                      style: TextStyle(color: Colors.white70)),
-                                  actions: [
-                                    TextButton(
-                                      child: const Text('Verify Payment'),
-                                      onPressed: () async {
-                                        try {
-                                          final success = await SupabaseService
-                                              .instance
-                                              .verifyPayment(reference);
-                                          if (mounted)
-                                            Navigator.of(dialogContext)
-                                                .pop(success);
-                                        } catch (e) {
-                                          if (mounted) {
-                                            ScaffoldMessenger.of(context)
-                                                .showSnackBar(SnackBar(
-                                                    content: Text(e.toString()),
-                                                    backgroundColor:
-                                                        Colors.red));
-                                            Navigator.of(dialogContext)
-                                                .pop(false);
-                                          }
-                                        }
-                                      },
-                                    ),
-                                  ],
-                                ),
-                              );
-
-                              if (verified == true) {
-                                await _loadData(); // Refresh the screen
-                              }
-                            }
-                          } else {
-                            throw 'Could not launch payment page.';
-                          }
-                        } catch (e) {
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                                content: Text(e.toString()),
-                                backgroundColor: Colors.red));
-                          }
-                        } finally {
-                          if (mounted) {
-                            setState(() => _isProcessingPayment = false);
-                          }
-                        }
-                      },
+                onPressed: _isProcessingPayment ? null : _handleUpgrade,
               )
             else
-              OutlinedButton(
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.white70,
-                  side: const BorderSide(color: Colors.white38),
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                ),
-                child: const Text('Manage Subscription'),
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                      content: Text('Subscription management coming soon!')));
-                },
-              ),
+              // --- NEW UI LOGIC FOR CANCELLATION ---
+              _cancellationIsPending
+                  ? const Chip(
+                      backgroundColor: Colors.amber,
+                      label: Text(
+                        'CANCELLATION PENDING',
+                        style: TextStyle(
+                            color: Colors.black87, fontWeight: FontWeight.bold),
+                      ),
+                    )
+                  : OutlinedButton(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.orangeAccent,
+                        side: const BorderSide(color: Colors.orangeAccent),
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                      ),
+                      child: const Text('Request Subscription Cancellation'),
+                      onPressed: _handleCancellationRequest,
+                    ),
           ],
         ),
       ),
     );
   }
 
-  // --- No changes needed to the other methods ---
-  // ... _buildEarningsTab() and all other helper widgets remain the same
+  Future<void> _handleUpgrade() async {
+    setState(() => _isProcessingPayment = true);
+    try {
+      final email = _userProfile?['email'] as String?;
+      if (email == null) throw Exception('User email not found.');
 
+      final paymentDetails =
+          await SupabaseService.instance.getPaystackCheckoutUrl(email);
+      final checkoutUrl = paymentDetails['authorization_url'];
+      final reference = paymentDetails['reference'];
+      final url = Uri.parse(checkoutUrl);
+
+      if (await canLaunchUrl(url)) {
+        await launchUrl(url, mode: LaunchMode.externalApplication);
+        if (mounted) {
+          final bool? verified = await showDialog<bool>(
+            context: context,
+            barrierDismissible: false,
+            builder: (dialogContext) => AlertDialog(
+              backgroundColor: darkSuedeNavy,
+              title: const Text('Confirm Your Payment',
+                  style: TextStyle(color: Colors.white)),
+              content: const Text(
+                  'After completing the payment, tap "Verify" to activate your subscription.',
+                  style: TextStyle(color: Colors.white70)),
+              actions: [
+                TextButton(
+                  child: const Text('Verify Payment'),
+                  onPressed: () async {
+                    try {
+                      final success = await SupabaseService.instance
+                          .verifyPayment(reference);
+                      if (mounted) Navigator.of(dialogContext).pop(success);
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                            content:
+                                Text("Verification Error: ${e.toString()}"),
+                            backgroundColor: Colors.red));
+                        Navigator.of(dialogContext).pop(false);
+                      }
+                    }
+                  },
+                ),
+              ],
+            ),
+          );
+
+          if (verified == true) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('Success! Your Plus subscription is now active.'),
+              backgroundColor: Colors.green,
+            ));
+            await _loadData();
+          }
+        }
+      } else {
+        throw 'Could not launch payment page.';
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(e.toString()), backgroundColor: Colors.red));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isProcessingPayment = false);
+      }
+    }
+  }
+
+  Future<void> _handleCancellationRequest() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: darkSuedeNavy,
+        title: const Text('Request Cancellation?',
+            style: TextStyle(color: Colors.white)),
+        content: const Text(
+            'This will submit a request to our team to cancel your subscription. This may take up to 24 hours. Are you sure?',
+            style: TextStyle(color: Colors.white70)),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('No')),
+          TextButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Yes, Submit Request',
+                  style: TextStyle(color: Colors.orangeAccent))),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      try {
+        await SupabaseService.instance.requestCancellation();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text(
+                'Your cancellation request has been submitted and is pending.'),
+            backgroundColor: Colors.green,
+          ));
+          // Refresh the UI to show the "Pending" state
+          await _loadData();
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text('Error: ${e.toString()}'),
+              backgroundColor: Colors.red));
+        }
+      }
+    }
+  }
+
+  // --- All other helper methods (_buildEarningsTab, etc.) remain unchanged ---
   Widget _buildEarningsTab() {
     if (!_isPremium) {
       return _buildUpgradeToEarnPrompt();
     }
-
     final plusAddons = _creatorStats['plus_addons_count'] as int? ?? 0;
     final balance = _creatorStats['reward_balance'] as num? ?? 0;
     final totalEarned = _creatorStats['total_earned'] as num? ?? 0;
     final progress = (plusAddons % 100) / 100.0;
-
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
       child: Column(
@@ -333,7 +379,6 @@ class _XAnalyticsScreenState extends State<XAnalyticsScreen> {
 
   Widget _buildUpgradeToEarnPrompt() {
     return Builder(
-      // This Builder provides the correct context
       builder: (BuildContext context) {
         return Center(
           child: Padding(
@@ -366,7 +411,6 @@ class _XAnalyticsScreenState extends State<XAnalyticsScreen> {
                   ),
                   child: const Text('Go to Subscription'),
                   onPressed: () {
-                    // Now this will work correctly
                     DefaultTabController.of(context).animateTo(1);
                   },
                 ),
