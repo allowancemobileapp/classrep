@@ -19,11 +19,24 @@ android {
         jvmTarget = JavaVersion.VERSION_11.toString()
     }
 
+    signingConfigs {
+        create("release") {
+            val propertiesFile = project.file("../key.properties")
+            if (propertiesFile.exists()) {
+                val properties = java.util.Properties()
+                properties.load(java.io.FileInputStream(propertiesFile))
+                keyAlias = properties.getProperty("keyAlias")
+                keyPassword = properties.getProperty("keyPassword")
+                storeFile = file(properties.getProperty("storeFile"))
+                storePassword = properties.getProperty("storePassword")
+            }
+        }
+    }
+
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.class_rep"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
+        // TODO: IMPORTANT! Change this to your own unique Application ID before publishing.
+        // It cannot be changed after you release the app.
+        applicationId = "com.yourcompany.classrep"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
@@ -31,10 +44,9 @@ android {
     }
 
     buildTypes {
-        release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+        getByName("release") {
+            // This now correctly uses your release key.
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 }
