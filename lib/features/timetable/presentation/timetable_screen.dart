@@ -608,7 +608,6 @@ class _TimetableScreenState extends State<TimetableScreen> {
     final linkUrl = event['url'] as String?;
     final isMine = event['user_id'] == _currentUserId;
 
-    // metadata may be Map or String
     bool commentsEnabled = true;
     final metadata = event['metadata'];
     if (metadata is Map && metadata.containsKey('comments_enabled')) {
@@ -742,38 +741,94 @@ class _TimetableScreenState extends State<TimetableScreen> {
                       ),
                     ),
                     const SizedBox(width: 12),
-                    Column(
+                    Row(
                       mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            // COMMENT ICON (Apple style)
-                            IconButton(
-                              icon: Icon(
-                                CupertinoIcons.bubble_left,
-                                color: commentsEnabled
-                                    ? Colors.cyanAccent
-                                    : Colors.white38,
-                              ),
-                              onPressed: commentsEnabled
-                                  ? () => _openCommentsSheet(
-                                      event['id'].toString(), title, event)
-                                  : null,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(startTime,
-                                style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 22,
-                                    fontWeight: FontWeight.bold,
-                                    shadows: [
-                                      Shadow(
-                                          blurRadius: 8, color: Colors.black87)
-                                    ])),
-                          ],
+                        if (isMine)
+                          IconButton(
+                            tooltip: 'Send Reminder to Subscribers',
+                            icon: const Icon(Icons.campaign_outlined,
+                                color: Colors.white70),
+                            onPressed: () async {
+                              // --- UPDATED ERROR HANDLING ---
+                              try {
+                                await SupabaseService.instance
+                                    .sendEventReminder(event['id']);
+                                if (!mounted) return;
+                                ScaffoldMessenger.of(context)
+                                    .showSnackBar(const SnackBar(
+                                  content:
+                                      Text('Reminder sent to all subscribers!'),
+                                  backgroundColor: Colors.green,
+                                ));
+                              } catch (e) {
+                                if (!mounted) return;
+                                final errorString = e.toString().toLowerCase();
+                                if (errorString
+                                    .contains('reminder limit reached')) {
+                                  showDialog(
+                                    context: context,
+                                    builder: (dialogContext) => AlertDialog(
+                                      backgroundColor: lightSuedeNavy,
+                                      title: const Text('Limit Reached',
+                                          style:
+                                              TextStyle(color: Colors.white)),
+                                      content: const Text(
+                                          'Free users can send 3 reminders per day. Upgrade to Plus for unlimited reminders!',
+                                          style:
+                                              TextStyle(color: Colors.white70)),
+                                      actions: [
+                                        TextButton(
+                                          child: const Text('Okay'),
+                                          onPressed: () =>
+                                              Navigator.of(dialogContext).pop(),
+                                        ),
+                                        ElevatedButton(
+                                          style: ElevatedButton.styleFrom(
+                                              backgroundColor:
+                                                  Colors.cyanAccent),
+                                          child: const Text('Upgrade',
+                                              style: TextStyle(
+                                                  color: Colors.black)),
+                                          onPressed: () {
+                                            Navigator.of(dialogContext).pop();
+                                            // TODO: Navigate to subscription screen
+                                          },
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                } else {
+                                  ScaffoldMessenger.of(context)
+                                      .showSnackBar(SnackBar(
+                                    content: Text(
+                                        'Error: An unexpected error occurred.'),
+                                    backgroundColor: Colors.red,
+                                  ));
+                                }
+                              }
+                            },
+                          ),
+                        IconButton(
+                          icon: Icon(
+                            CupertinoIcons.bubble_left,
+                            color: commentsEnabled
+                                ? Colors.cyanAccent
+                                : Colors.white38,
+                          ),
+                          onPressed: commentsEnabled
+                              ? () => _openCommentsSheet(
+                                  event['id'].toString(), title, event)
+                              : null,
                         ),
+                        Text(startTime,
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 22,
+                                fontWeight: FontWeight.bold,
+                                shadows: [
+                                  Shadow(blurRadius: 8, color: Colors.black87)
+                                ])),
                       ],
                     ),
                   ],
@@ -797,8 +852,6 @@ class _TimetableScreenState extends State<TimetableScreen> {
     final linkUrl = event['url'] as String?;
     final isMine = event['user_id'] == _currentUserId;
 
-    // metadata may be Map or String
-    // ignore: unused_local_variable
     bool commentsEnabled = true;
     final metadata = event['metadata'];
     if (metadata is Map && metadata.containsKey('comments_enabled')) {
@@ -867,14 +920,70 @@ class _TimetableScreenState extends State<TimetableScreen> {
                   }
                 },
               ),
-            // COMMENT ICON (Apple style)
+            if (isMine)
+              IconButton(
+                tooltip: 'Send Reminder to Subscribers',
+                icon:
+                    const Icon(Icons.campaign_outlined, color: Colors.white70),
+                onPressed: () async {
+                  // --- UPDATED ERROR HANDLING ---
+                  try {
+                    await SupabaseService.instance
+                        .sendEventReminder(event['id']);
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                      content: Text('Reminder sent to all subscribers!'),
+                      backgroundColor: Colors.green,
+                    ));
+                  } catch (e) {
+                    if (!mounted) return;
+                    final errorString = e.toString().toLowerCase();
+                    if (errorString.contains('reminder limit reached')) {
+                      showDialog(
+                        context: context,
+                        builder: (dialogContext) => AlertDialog(
+                          backgroundColor: lightSuedeNavy,
+                          title: const Text('Limit Reached',
+                              style: TextStyle(color: Colors.white)),
+                          content: const Text(
+                              'Free users can send 3 reminders per day. Upgrade to Plus for unlimited reminders!',
+                              style: TextStyle(color: Colors.white70)),
+                          actions: [
+                            TextButton(
+                              child: const Text('Okay'),
+                              onPressed: () =>
+                                  Navigator.of(dialogContext).pop(),
+                            ),
+                            ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.cyanAccent),
+                              child: const Text('Upgrade',
+                                  style: TextStyle(color: Colors.black)),
+                              onPressed: () {
+                                Navigator.of(dialogContext).pop();
+                                // TODO: Navigate to subscription screen
+                              },
+                            ),
+                          ],
+                        ),
+                      );
+                    } else {
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                        content: Text('Error: An unexpected error occurred.'),
+                        backgroundColor: Colors.red,
+                      ));
+                    }
+                  }
+                },
+              ),
             IconButton(
               icon: const Icon(CupertinoIcons.bubble_left),
-              color: Colors.cyanAccent,
-              onPressed: () =>
-                  _openCommentsSheet(event['id'].toString(), title, event),
+              color: commentsEnabled ? Colors.cyanAccent : Colors.white38,
+              onPressed: commentsEnabled
+                  ? () =>
+                      _openCommentsSheet(event['id'].toString(), title, event)
+                  : null,
             ),
-            const SizedBox(width: 8),
             Text(startTime,
                 style: const TextStyle(
                     color: Colors.white, fontWeight: FontWeight.bold)),

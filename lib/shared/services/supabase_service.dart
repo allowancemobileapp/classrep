@@ -653,4 +653,11 @@ class SupabaseService {
 
     return (usersResponse as List).cast<Map<String, dynamic>>();
   }
+
+  Future<void> sendEventReminder(String eventId) async {
+    await supabase.rpc(
+      'send_event_reminder',
+      params: {'event_id_to_remind': eventId},
+    );
+  }
 }
