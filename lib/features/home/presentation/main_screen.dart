@@ -1,9 +1,9 @@
-// lib/main_screen.dart (or wherever your MainScreen is located)
+// lib/features/home/presentation/main_screen.dart (or wherever your MainScreen is located)
 
 import 'package:flutter/material.dart';
 import 'package:class_rep/features/timetable/presentation/timetable_screen.dart';
-import 'package:class_rep/features/x_analytics/presentation/x_analytics_screen.dart'; // Import X Screen
-import 'package:class_rep/features/profile/presentation/profile_screen.dart'; // Import Profile Screen
+import 'package:class_rep/features/x_analytics/presentation/x_analytics_screen.dart';
+import 'package:class_rep/features/profile/presentation/profile_screen.dart';
 import 'package:class_rep/shared/services/auth_service.dart';
 import 'package:class_rep/shared/services/supabase_service.dart';
 
@@ -19,15 +19,18 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   int _selectedIndex = 0;
-  Map<String, dynamic>? _userProfile; // Add this
+  Map<String, dynamic>? _userProfile;
 
   @override
   void initState() {
     super.initState();
-    _loadUserProfile(); // Add this
+    _loadUserProfile();
+
+    // --- THIS IS THE NEW LINE ---
+    // Get and save the user's notification token on startup
+    SupabaseService.instance.initNotifications();
   }
 
-  // Add this new method to fetch the user's data
   Future<void> _loadUserProfile() async {
     final userId = AuthService.instance.currentUser?.id;
     if (userId == null) return;
@@ -39,12 +42,10 @@ class _MainScreenState extends State<MainScreen> {
         });
       }
     } catch (e) {
-      // Handle error if needed
       debugPrint("Error loading user profile for nav bar: $e");
     }
   }
 
-  // UPDATE: This list remains the same but will now be used by the updated BottomNavBar
   static const List<Widget> _widgetOptions = <Widget>[
     TimetableScreen(),
     XAnalyticsScreen(),
@@ -88,7 +89,6 @@ class _MainScreenState extends State<MainScreen> {
             ),
             label: '',
           ),
-          // --- START OF PROFILE ICON UPDATE ---
           BottomNavigationBarItem(
             icon: CircleAvatar(
               radius: 12,
@@ -114,7 +114,6 @@ class _MainScreenState extends State<MainScreen> {
             ),
             label: 'Profile',
           ),
-          // --- END OF PROFILE ICON UPDATE ---
         ],
         currentIndex: _selectedIndex,
         onTap: _onItemTapped,

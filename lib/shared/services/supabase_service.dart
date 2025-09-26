@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:class_rep/shared/services/auth_service.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 // Helper to access the Supabase client easily.
 final supabase = Supabase.instance.client;
@@ -519,6 +520,30 @@ class SupabaseService {
       }
     } catch (e) {
       throw Exception(e.toString());
+    }
+  }
+
+  Future<void> initNotifications() async {
+    final messaging = FirebaseMessaging.instance;
+
+    // Request permission from the user to show notifications (required for iOS and Android 13+)
+    await messaging.requestPermission();
+
+    // Get the unique FCM token for this device
+    final fcmToken = await messaging.getToken();
+
+    // Save the token to your Supabase database
+    final userId = AuthService.instance.currentUser?.id;
+    if (fcmToken != null && userId != null) {
+      try {
+        await supabase
+            .from('users')
+            .update({'fcm_token': fcmToken}).eq('id', userId);
+      } catch (e) {
+        // It's good practice to handle potential errors,
+        // but we don't want to block the user if it fails.
+        debugPrint('Error saving FCM token: $e');
+      }
     }
   }
 }

@@ -13,7 +13,6 @@ serve(async (req) => {
   }
 
   try {
-    // FIX 1: Using the correct, consistent secret key name
     const paystackSecret = Deno.env.get('PAYSTACK_LIVE_SECRET_KEY')
     if (!paystackSecret) throw new Error('Paystack secret key is not set in environment variables.')
 
@@ -39,22 +38,35 @@ serve(async (req) => {
         { auth: { persistSession: false } }
       )
 
-      // Find the user by their email in your public users table
       const { data: userData, error: userError } = await supabaseAdmin
-        .from('users') // CORRECT: Using the 'users' table from your schema
+        .from('users')
         .select('id')
         .eq('email', customerEmail)
         .single()
 
       if (userError) throw new Error(`User with email ${customerEmail} not found. Details: ${userError.message}`)
       
-      // Update the user's profile to is_plus = true in your public users table
       const { error: updateError } = await supabaseAdmin
-        .from('users') // CORRECT: Using the 'users' table from your schema
+        .from('users')
         .update({ is_plus: true })
         .eq('id', userData.id)
         
       if (updateError) throw new Error(`Failed to update user status: ${updateError.message}`)
+
+      // --- ADD THIS BLOCK TO SEND THE PUSH NOTIFICATION ---
+      try {
+        await supabaseAdmin.functions.invoke('send-push-notification', {
+          body: {
+            userId: userData.id,
+            title: 'Subscription Activated!',
+            body: 'Welcome to Class-Rep Plus! You can now access all premium features.'
+          }
+        })
+      } catch (invokeError) {
+        // Log the error but don't fail the whole webhook, as the payment was successful.
+        console.error('Failed to invoke send-push-notification function:', invokeError.message)
+      }
+      // --- END OF NEW BLOCK ---
     }
     
     return new Response(JSON.stringify({ status: 'ok' }), {

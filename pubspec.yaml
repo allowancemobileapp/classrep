@@ -30,6 +30,8 @@ dependencies:
   # Icons
   cupertino_icons: ^1.0.2
   url_launcher: ^6.3.2
+  firebase_core: ^3.4.0
+  firebase_messaging: ^15.1.0
 
 
 dev_dependencies:
