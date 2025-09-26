@@ -323,7 +323,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // User Profile Section
+              // ... keep the ListTile for User Profile Section ...
               ListTile(
                 leading: CircleAvatar(
                   radius: 24,
@@ -354,7 +354,6 @@ class _TimetableScreenState extends State<TimetableScreen> {
               ),
               const Divider(color: lightSuedeNavy),
 
-              // Add Timetable Section
               Padding(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
@@ -383,37 +382,73 @@ class _TimetableScreenState extends State<TimetableScreen> {
                               .subscribeToTimetable(codeController.text.trim());
                           await _loadAllData();
                           if (!mounted) return;
-                          Navigator.pop(context); // Close the menu on success
+                          Navigator.pop(context);
                           ScaffoldMessenger.of(context).showSnackBar(
                               const SnackBar(
                                   content: Text('Timetable added!'),
                                   backgroundColor: Colors.green));
                         } catch (e) {
-                          String errorMessage;
-                          Color errorColor = Colors.redAccent;
-
+                          // --- THIS IS THE MODIFIED ERROR HANDLING ---
                           final errorString = e.toString().toLowerCase();
-
-                          if (errorString.contains('already subscribed')) {
-                            errorMessage =
-                                'You are already subscribed to this user.';
-                            errorColor = Colors.orange;
-                          } else if (errorString.contains('not found') ||
-                              errorString.contains('no rows')) {
-                            errorMessage =
-                                'Could not find a user with that username.';
+                          if (errorString.contains('free users are limited')) {
+                            // Show a friendly dialog instead of a red snackbar
+                            Navigator.pop(
+                                context); // Close the hamburger menu first
+                            showDialog(
+                              context: context,
+                              builder: (dialogContext) => AlertDialog(
+                                backgroundColor: lightSuedeNavy,
+                                title: const Text('Upgrade to Plus',
+                                    style: TextStyle(color: Colors.white)),
+                                content: const Text(
+                                    'Free users can only add 1 timetable. Upgrade to Class-Rep Plus to add unlimited timetables!',
+                                    style: TextStyle(color: Colors.white70)),
+                                actions: [
+                                  TextButton(
+                                    child: const Text('Maybe Later'),
+                                    onPressed: () =>
+                                        Navigator.of(dialogContext).pop(),
+                                  ),
+                                  ElevatedButton(
+                                    style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.cyanAccent),
+                                    child: const Text('Upgrade Now',
+                                        style: TextStyle(color: Colors.black)),
+                                    onPressed: () {
+                                      Navigator.of(dialogContext).pop();
+                                      // TODO: Navigate to your XAnalyticsScreen's subscription tab
+                                      // For example: Navigator.push(context, MaterialPageRoute(builder: (_) => MainScreen(initialIndex: 1)));
+                                      // This depends on how your navigation is set up.
+                                    },
+                                  ),
+                                ],
+                              ),
+                            );
                           } else {
-                            errorMessage =
-                                'An unexpected error occurred. Please try again.';
+                            // Handle other errors with a snackbar as before
+                            String errorMessage;
+                            Color errorColor = Colors.redAccent;
+                            if (errorString.contains('already subscribed')) {
+                              errorMessage =
+                                  'You are already subscribed to this user.';
+                              errorColor = Colors.orange;
+                            } else if (errorString.contains('not found') ||
+                                errorString.contains('no rows')) {
+                              errorMessage =
+                                  'Could not find a user with that username.';
+                            } else {
+                              errorMessage =
+                                  'An unexpected error occurred. Please try again.';
+                            }
+                            if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(errorMessage),
+                                backgroundColor: errorColor,
+                              ),
+                            );
                           }
-
-                          if (!mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(errorMessage),
-                              backgroundColor: errorColor,
-                            ),
-                          );
+                          // --- END OF MODIFICATION ---
                         }
                       },
                     ),
@@ -422,7 +457,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
               ),
               const Divider(color: lightSuedeNavy),
 
-              // Management Buttons
+              // ... keep the ListTile for Management Buttons ...
               ListTile(
                 leading: const Icon(Icons.group, color: Colors.white70),
                 title: const Text('Manage Groups',
@@ -1519,11 +1554,22 @@ class _NotificationSheetState extends State<NotificationSheet> {
                       final actorUsername = actor?['username'] ?? 'Someone';
                       final actorAvatarUrl = actor?['avatar_url'] as String?;
                       final type = notification['type'];
+
+                      // --- START OF UI UPDATE ---
                       final payload =
                           notification['payload'] as Map<String, dynamic>?;
                       final eventTitle = payload?['event_title'] as String?;
+                      final eventStartTimeStr =
+                          payload?['event_start_time'] as String?;
 
-                      // --- START OF UPDATE ---
+                      String? formattedEventTime;
+                      if (eventStartTimeStr != null) {
+                        final eventTime =
+                            DateTime.parse(eventStartTimeStr).toLocal();
+                        formattedEventTime =
+                            DateFormat.yMMMd().add_jm().format(eventTime);
+                      }
+
                       String message = 'did something.';
                       if (type == 'subscription') {
                         message = 'subscribed to your timetable.';
@@ -1553,21 +1599,35 @@ class _NotificationSheetState extends State<NotificationSheet> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             if (eventTitle != null)
-                              Text(eventTitle,
-                                  style: const TextStyle(
-                                      color: Colors.white70,
-                                      fontWeight: FontWeight.bold)),
-                            Text(
-                              DateFormat.yMMMd().add_jm().format(
-                                  DateTime.parse(notification['created_at'])
-                                      .toLocal()),
-                              style: const TextStyle(
-                                  color: Colors.white70, fontSize: 12),
+                              Padding(
+                                padding: const EdgeInsets.only(top: 4.0),
+                                child: Text(eventTitle,
+                                    style: const TextStyle(
+                                        color: Colors.white70,
+                                        fontWeight: FontWeight.bold)),
+                              ),
+                            if (formattedEventTime != null)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 2.0),
+                                child: Text(formattedEventTime,
+                                    style: const TextStyle(
+                                        color: Colors.cyanAccent,
+                                        fontSize: 12)),
+                              ),
+                            Padding(
+                              padding: const EdgeInsets.only(top: 4.0),
+                              child: Text(
+                                DateFormat.yMMMd().add_jm().format(
+                                    DateTime.parse(notification['created_at'])
+                                        .toLocal()),
+                                style: const TextStyle(
+                                    color: Colors.white70, fontSize: 12),
+                              ),
                             ),
                           ],
                         ),
                       );
-                      // --- END OF UPDATE ---
+                      // --- END OF UI UPDATE ---
                     },
                   );
                 },

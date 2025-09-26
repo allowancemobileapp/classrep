@@ -342,10 +342,20 @@ class SupabaseService {
   }
 
   Future<List<Map<String, dynamic>>> fetchNotifications() async {
+    final userId = AuthService.instance.currentUser?.id;
+
+    // If there's no logged-in user, return an empty list.
+    if (userId == null) {
+      return [];
+    }
+
     final response = await supabase
         .from('notifications')
         .select('*, actor:actor_user_id(username, avatar_url)')
+        .eq('recipient_user_id',
+            userId) // <-- THE FIX: Only get notifications for the current user.
         .order('created_at', ascending: false);
+
     return (response as List).cast<Map<String, dynamic>>();
   }
 
@@ -545,5 +555,102 @@ class SupabaseService {
         debugPrint('Error saving FCM token: $e');
       }
     }
+  }
+
+  Future<List<Map<String, dynamic>>> getGroupMembers(String groupId) async {
+    final response = await supabase
+        .from('group_members')
+        .select('users(*)') // This joins and fetches the full user profile
+        .eq('group_id', groupId);
+
+    // The result is a list of objects like [{ "users": { ... } }].
+    // We need to extract just the user data.
+    return (response as List)
+        .map((row) => row['users'] as Map<String, dynamic>)
+        .toList();
+  }
+
+  // In lib/shared/services/supabase_service.dart
+
+  Future<List<Map<String, dynamic>>> findSubscribers(String searchText) async {
+    final userId = AuthService.instance.currentUser?.id;
+    if (userId == null) return [];
+
+    // Step 1: Get all IDs of users who subscribe to you
+    final subsResponse = await supabase
+        .from('timetable_subscriptions')
+        .select('subscriber_id')
+        .eq('owner_id', userId);
+
+    final subscriberIds = (subsResponse as List)
+        .map((row) => row['subscriber_id'] as String)
+        .toList();
+
+    if (subscriberIds.isEmpty) return [];
+
+    // Step 2: Search for users within that list of IDs by username
+    // THIS IS THE CORRECTED QUERY SYNTAX
+    final usersResponse = await supabase
+        .from('users')
+        .select()
+        .filter(
+            'id', 'in', subscriberIds) // Use .filter() for the 'in' operator
+        .ilike('username', '%$searchText%');
+
+    return (usersResponse as List).cast<Map<String, dynamic>>();
+  }
+
+  Future<void> removeGroupMember(String groupId, String userId) async {
+    await supabase
+        .from('group_members')
+        .delete()
+        .match({'group_id': groupId, 'user_id': userId});
+  }
+
+  Future<void> addGroupMember(String groupId, String userId) async {
+    await supabase.from('group_members').insert({
+      'group_id': groupId,
+      'user_id': userId,
+    });
+  }
+
+  Future<List<Map<String, dynamic>>> getAddableGroupMembers(
+      String groupId) async {
+    final userId = AuthService.instance.currentUser?.id;
+    if (userId == null) return [];
+
+    // Step 1: Get all IDs of users who subscribe to you
+    final subsResponse = await supabase
+        .from('timetable_subscriptions')
+        .select('subscriber_id')
+        .eq('owner_id', userId);
+    final subscriberIds = (subsResponse as List)
+        .map((row) => row['subscriber_id'] as String)
+        .toList();
+
+    if (subscriberIds.isEmpty) return [];
+
+    // Step 2: Get all IDs of users who are already in the group
+    final membersResponse = await supabase
+        .from('group_members')
+        .select('user_id')
+        .eq('group_id', groupId);
+    final memberIds = (membersResponse as List)
+        .map((row) => row['user_id'] as String)
+        .toList();
+
+    // Step 3: Find the subscribers who are not already members
+    final addableIds =
+        subscriberIds.where((id) => !memberIds.contains(id)).toList();
+
+    if (addableIds.isEmpty) return [];
+
+    // Step 4: Fetch the profiles for the addable subscribers
+    final usersResponse = await supabase
+        .from('users')
+        .select('id, username, avatar_url')
+        .filter('id', 'in', addableIds); // <-- THE CORRECTED LINE
+
+    return (usersResponse as List).cast<Map<String, dynamic>>();
   }
 }
