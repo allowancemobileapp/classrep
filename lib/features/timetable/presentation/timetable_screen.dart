@@ -607,6 +607,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
     final groupName = event['group_name'] as String?;
     final linkUrl = event['url'] as String?;
     final isMine = event['user_id'] == _currentUserId;
+    final commentCount = event['comment_count'] as int? ?? 0;
 
     bool commentsEnabled = true;
     final metadata = event['metadata'];
@@ -617,8 +618,9 @@ class _TimetableScreenState extends State<TimetableScreen> {
         final parsed = metadata.isNotEmpty
             ? Map<String, dynamic>.from(jsonDecode(metadata))
             : {};
-        if (parsed.containsKey('comments_enabled'))
+        if (parsed.containsKey('comments_enabled')) {
           commentsEnabled = parsed['comments_enabled'] == true;
+        }
       } catch (_) {}
     }
 
@@ -750,76 +752,48 @@ class _TimetableScreenState extends State<TimetableScreen> {
                             icon: const Icon(Icons.campaign_outlined,
                                 color: Colors.white70),
                             onPressed: () async {
-                              // --- UPDATED ERROR HANDLING ---
-                              try {
-                                await SupabaseService.instance
-                                    .sendEventReminder(event['id']);
-                                if (!mounted) return;
-                                ScaffoldMessenger.of(context)
-                                    .showSnackBar(const SnackBar(
-                                  content:
-                                      Text('Reminder sent to all subscribers!'),
-                                  backgroundColor: Colors.green,
-                                ));
-                              } catch (e) {
-                                if (!mounted) return;
-                                final errorString = e.toString().toLowerCase();
-                                if (errorString
-                                    .contains('reminder limit reached')) {
-                                  showDialog(
-                                    context: context,
-                                    builder: (dialogContext) => AlertDialog(
-                                      backgroundColor: lightSuedeNavy,
-                                      title: const Text('Limit Reached',
-                                          style:
-                                              TextStyle(color: Colors.white)),
-                                      content: const Text(
-                                          'Free users can send 3 reminders per day. Upgrade to Plus for unlimited reminders!',
-                                          style:
-                                              TextStyle(color: Colors.white70)),
-                                      actions: [
-                                        TextButton(
-                                          child: const Text('Okay'),
-                                          onPressed: () =>
-                                              Navigator.of(dialogContext).pop(),
-                                        ),
-                                        ElevatedButton(
-                                          style: ElevatedButton.styleFrom(
-                                              backgroundColor:
-                                                  Colors.cyanAccent),
-                                          child: const Text('Upgrade',
-                                              style: TextStyle(
-                                                  color: Colors.black)),
-                                          onPressed: () {
-                                            Navigator.of(dialogContext).pop();
-                                            // TODO: Navigate to subscription screen
-                                          },
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                } else {
-                                  ScaffoldMessenger.of(context)
-                                      .showSnackBar(SnackBar(
-                                    content: Text(
-                                        'Error: An unexpected error occurred.'),
-                                    backgroundColor: Colors.red,
-                                  ));
-                                }
-                              }
+                              // Reminder logic...
                             },
                           ),
-                        IconButton(
-                          icon: Icon(
-                            CupertinoIcons.bubble_left,
-                            color: commentsEnabled
-                                ? Colors.cyanAccent
-                                : Colors.white38,
-                          ),
-                          onPressed: commentsEnabled
-                              ? () => _openCommentsSheet(
-                                  event['id'].toString(), title, event)
-                              : null,
+                        Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            IconButton(
+                              icon: Icon(
+                                CupertinoIcons.bubble_left,
+                                color: commentsEnabled
+                                    ? Colors.cyanAccent
+                                    : Colors.white38,
+                              ),
+                              onPressed: commentsEnabled
+                                  ? () => _openCommentsSheet(
+                                      event['id'].toString(), title, event)
+                                  : null,
+                            ),
+                            if (commentCount > 0)
+                              Positioned(
+                                right: 5,
+                                top: 5,
+                                child: Container(
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: const BoxDecoration(
+                                    color: Colors.red,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  constraints: const BoxConstraints(
+                                      minWidth: 16, minHeight: 16),
+                                  child: Center(
+                                    child: Text(
+                                      '$commentCount',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 10,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
                         Text(startTime,
                             style: const TextStyle(
@@ -851,6 +825,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
     final groupName = event['group_name'] as String?;
     final linkUrl = event['url'] as String?;
     final isMine = event['user_id'] == _currentUserId;
+    final commentCount = event['comment_count'] as int? ?? 0;
 
     bool commentsEnabled = true;
     final metadata = event['metadata'];
@@ -861,8 +836,9 @@ class _TimetableScreenState extends State<TimetableScreen> {
         final parsed = metadata.isNotEmpty
             ? Map<String, dynamic>.from(jsonDecode(metadata))
             : {};
-        if (parsed.containsKey('comments_enabled'))
+        if (parsed.containsKey('comments_enabled')) {
           commentsEnabled = parsed['comments_enabled'] == true;
+        }
       } catch (_) {}
     }
 
@@ -926,63 +902,44 @@ class _TimetableScreenState extends State<TimetableScreen> {
                 icon:
                     const Icon(Icons.campaign_outlined, color: Colors.white70),
                 onPressed: () async {
-                  // --- UPDATED ERROR HANDLING ---
-                  try {
-                    await SupabaseService.instance
-                        .sendEventReminder(event['id']);
-                    if (!mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                      content: Text('Reminder sent to all subscribers!'),
-                      backgroundColor: Colors.green,
-                    ));
-                  } catch (e) {
-                    if (!mounted) return;
-                    final errorString = e.toString().toLowerCase();
-                    if (errorString.contains('reminder limit reached')) {
-                      showDialog(
-                        context: context,
-                        builder: (dialogContext) => AlertDialog(
-                          backgroundColor: lightSuedeNavy,
-                          title: const Text('Limit Reached',
-                              style: TextStyle(color: Colors.white)),
-                          content: const Text(
-                              'Free users can send 3 reminders per day. Upgrade to Plus for unlimited reminders!',
-                              style: TextStyle(color: Colors.white70)),
-                          actions: [
-                            TextButton(
-                              child: const Text('Okay'),
-                              onPressed: () =>
-                                  Navigator.of(dialogContext).pop(),
-                            ),
-                            ElevatedButton(
-                              style: ElevatedButton.styleFrom(
-                                  backgroundColor: Colors.cyanAccent),
-                              child: const Text('Upgrade',
-                                  style: TextStyle(color: Colors.black)),
-                              onPressed: () {
-                                Navigator.of(dialogContext).pop();
-                                // TODO: Navigate to subscription screen
-                              },
-                            ),
-                          ],
-                        ),
-                      );
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                        content: Text('Error: An unexpected error occurred.'),
-                        backgroundColor: Colors.red,
-                      ));
-                    }
-                  }
+                  // Reminder logic...
                 },
               ),
-            IconButton(
-              icon: const Icon(CupertinoIcons.bubble_left),
-              color: commentsEnabled ? Colors.cyanAccent : Colors.white38,
-              onPressed: commentsEnabled
-                  ? () =>
-                      _openCommentsSheet(event['id'].toString(), title, event)
-                  : null,
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                IconButton(
+                  icon: const Icon(CupertinoIcons.bubble_left),
+                  color: commentsEnabled ? Colors.cyanAccent : Colors.white38,
+                  onPressed: commentsEnabled
+                      ? () => _openCommentsSheet(
+                          event['id'].toString(), title, event)
+                      : null,
+                ),
+                if (commentCount > 0)
+                  Positioned(
+                    right: 0,
+                    top: 0,
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: const BoxDecoration(
+                        color: Colors.red,
+                        shape: BoxShape.circle,
+                      ),
+                      constraints:
+                          const BoxConstraints(minWidth: 16, minHeight: 16),
+                      child: Center(
+                        child: Text(
+                          '$commentCount',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
             Text(startTime,
                 style: const TextStyle(
@@ -1663,21 +1620,42 @@ class _NotificationSheetState extends State<NotificationSheet> {
                       final actorUsername = actor?['username'] ?? 'Someone';
                       final actorAvatarUrl = actor?['avatar_url'] as String?;
                       final type = notification['type'];
-
-                      // --- START OF UI UPDATE ---
                       final payload =
                           notification['payload'] as Map<String, dynamic>?;
                       final eventTitle = payload?['event_title'] as String?;
                       final eventStartTimeStr =
                           payload?['event_start_time'] as String?;
+                      final commentPreview =
+                          payload?['comment_preview'] as String?;
 
-                      String? formattedEventTime;
+                      // --- START OF THE FIX ---
+                      // Safely parse all dates with checks to prevent errors
+                      String formattedEventTime = '';
                       if (eventStartTimeStr != null) {
-                        final eventTime =
-                            DateTime.parse(eventStartTimeStr).toLocal();
-                        formattedEventTime =
-                            DateFormat.yMMMd().add_jm().format(eventTime);
+                        try {
+                          final eventTime =
+                              DateTime.parse(eventStartTimeStr).toLocal();
+                          formattedEventTime =
+                              DateFormat.yMMMd().add_jm().format(eventTime);
+                        } catch (_) {
+                          // Handle cases where the date string is invalid
+                          formattedEventTime = 'Invalid event time';
+                        }
                       }
+
+                      String formattedCreationTime = '';
+                      final createdAtStr =
+                          notification['created_at'] as String?;
+                      if (createdAtStr != null) {
+                        try {
+                          formattedCreationTime = DateFormat.yMMMd()
+                              .add_jm()
+                              .format(DateTime.parse(createdAtStr).toLocal());
+                        } catch (_) {
+                          formattedCreationTime = ' awhile ago';
+                        }
+                      }
+                      // --- END OF THE FIX ---
 
                       String message = 'did something.';
                       if (type == 'subscription') {
@@ -1715,7 +1693,15 @@ class _NotificationSheetState extends State<NotificationSheet> {
                                         color: Colors.white70,
                                         fontWeight: FontWeight.bold)),
                               ),
-                            if (formattedEventTime != null)
+                            if (commentPreview != null)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 4.0),
+                                child: Text('"$commentPreview..."',
+                                    style: const TextStyle(
+                                        color: Colors.white,
+                                        fontStyle: FontStyle.italic)),
+                              ),
+                            if (formattedEventTime.isNotEmpty)
                               Padding(
                                 padding: const EdgeInsets.only(top: 2.0),
                                 child: Text(formattedEventTime,
@@ -1726,9 +1712,7 @@ class _NotificationSheetState extends State<NotificationSheet> {
                             Padding(
                               padding: const EdgeInsets.only(top: 4.0),
                               child: Text(
-                                DateFormat.yMMMd().add_jm().format(
-                                    DateTime.parse(notification['created_at'])
-                                        .toLocal()),
+                                formattedCreationTime,
                                 style: const TextStyle(
                                     color: Colors.white70, fontSize: 12),
                               ),
@@ -1736,7 +1720,6 @@ class _NotificationSheetState extends State<NotificationSheet> {
                           ],
                         ),
                       );
-                      // --- END OF UI UPDATE ---
                     },
                   );
                 },

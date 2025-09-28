@@ -176,14 +176,16 @@ class SupabaseService {
     final userId = AuthService.instance.currentUser?.id;
     if (userId == null) throw Exception('User not logged in');
 
-    final response = await supabase
-        .from('creator_metrics')
-        .select()
-        .eq('creator_user_id', userId)
-        .maybeSingle();
+    // Calls the new RPC function and expects the new fields
+    final response = await supabase.rpc('fetch_creator_stats').maybeSingle();
 
     return response ??
-        {'plus_addons_count': 0, 'reward_balance': 0, 'total_earned': 0};
+        {
+          'plus_addons_count': 0,
+          'reward_balance': 0,
+          'total_earned': 0,
+          'total_subscriber_count': 0 // Add default value
+        };
   }
 
   // Uploads a selected image file to the 'event_images' bucket.
