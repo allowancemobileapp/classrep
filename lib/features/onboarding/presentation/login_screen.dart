@@ -1,4 +1,4 @@
-// lib/features/auth/presentation/login_screen.dart
+// lib/features/onboarding/presentation/login_screen.dart
 
 import 'package:flutter/material.dart';
 import 'package:class_rep/shared/services/auth_service.dart';
