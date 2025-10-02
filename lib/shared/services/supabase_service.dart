@@ -143,7 +143,7 @@ class SupabaseService {
     );
   }
 
-  // Fetches the list of users that the current user is subscribed to.
+  // [RESTORED] Using your original, correct code which now works with the fixed security rule.
   Future<List<Map<String, dynamic>>> getMySharedUsers() async {
     final userId = AuthService.instance.currentUser?.id;
     if (userId == null) return [];
@@ -176,7 +176,6 @@ class SupabaseService {
     final userId = AuthService.instance.currentUser?.id;
     if (userId == null) throw Exception('User not logged in');
 
-    // Calls the new RPC function and expects the new fields
     final response = await supabase.rpc('fetch_creator_stats').maybeSingle();
 
     return response ??
@@ -184,7 +183,7 @@ class SupabaseService {
           'plus_addons_count': 0,
           'reward_balance': 0,
           'total_earned': 0,
-          'total_subscriber_count': 0 // Add default value
+          'total_subscriber_count': 0
         };
   }
 
@@ -210,10 +209,7 @@ class SupabaseService {
 
   Future<Map<String, dynamic>> getPaystackCheckoutUrl(
       {required String email}) async {
-    // This securely calls your server-side function.
-    // The plan code and secret key are now handled on the server.
     final response = await supabase.functions.invoke(
-      // <-- This was the fix
       'get-paystack-checkout-url',
       body: {'email': email},
     );
@@ -231,11 +227,8 @@ class SupabaseService {
         body: {'reference': reference},
       );
 
-      // This is the robust fix. We safely check the response.
       final responseData = response.data;
 
-      // If the function call itself fails (status != 200) or if it returns an error object,
-      // we throw a clear exception that the UI can catch.
       if (response.status != 200 ||
           (responseData is Map && responseData.containsKey('error'))) {
         final errorMsg = (responseData is Map && responseData['error'] != null)
@@ -244,10 +237,8 @@ class SupabaseService {
         throw Exception(errorMsg);
       }
 
-      // If we have a 200 status and no error key, it's a success.
       return true;
     } on FunctionException catch (e) {
-      // This catches errors from the Supabase client itself.
       final details = e.details;
       String errorMessage = 'Verification failed.';
       if (details is Map && details.containsKey('error')) {
@@ -255,12 +246,10 @@ class SupabaseService {
       }
       throw Exception(errorMessage);
     } catch (e) {
-      // A general catch-all for other errors.
       throw Exception('An unexpected error occurred: ${e.toString()}');
     }
   }
 
-  // --- ADDED: Calls the function to cancel a subscription ---
   Future<void> cancelSubscription() async {
     try {
       final response =
@@ -274,7 +263,6 @@ class SupabaseService {
     }
   }
 
-  // --- ADDED: Calls the function to confirm a subscription record exists ---
   Future<bool> confirmSubscriptionRecord() async {
     try {
       final response =
@@ -289,7 +277,6 @@ class SupabaseService {
     }
   }
 
-  // --- ADDED: Calls the function to confirm the user's state is cancelled ---
   Future<bool> confirmCancellationState() async {
     try {
       final response =
@@ -345,26 +332,25 @@ class SupabaseService {
 
   Future<List<Map<String, dynamic>>> fetchNotifications() async {
     final userId = AuthService.instance.currentUser?.id;
-
-    // If there's no logged-in user, return an empty list.
-    if (userId == null) {
-      return [];
-    }
+    if (userId == null) return [];
 
     final response = await supabase
         .from('notifications')
         .select('*, actor:actor_user_id(username, avatar_url)')
-        .eq('recipient_user_id',
-            userId) // <-- THE FIX: Only get notifications for the current user.
+        .eq('recipient_user_id', userId)
         .order('created_at', ascending: false);
 
     return (response as List).cast<Map<String, dynamic>>();
   }
 
   Future<int> getUnreadNotificationsCount() async {
+    final userId = AuthService.instance.currentUser?.id;
+    if (userId == null) return 0;
+
     final response = await supabase
         .from('notifications')
         .count(CountOption.exact)
+        .eq('recipient_user_id', userId)
         .eq('is_read', false);
 
     return response;
@@ -384,13 +370,11 @@ class SupabaseService {
     try {
       final response = await supabase.functions.invoke('request-cancellation');
       if (response.status != 200) {
-        // Try to get a more specific error message from the function if it exists
         final errorMsg =
             response.data?['error'] ?? 'Failed to submit cancellation request.';
         throw Exception(errorMsg);
       }
     } catch (e) {
-      // Re-throw with a more helpful message for the UI
       throw Exception(
           'Error calling request-cancellation function: ${e.toString()}');
     }
@@ -398,7 +382,7 @@ class SupabaseService {
 
   Future<bool> hasPendingCancellation() async {
     final userId = AuthService.instance.currentUser?.id;
-    if (userId == null) return false; // If no user, no pending request.
+    if (userId == null) return false;
 
     try {
       final response = await supabase
@@ -408,66 +392,26 @@ class SupabaseService {
           .eq('status', 'pending')
           .limit(1)
           .maybeSingle();
-
-      // If the response is not null, a pending request was found.
       return response != null;
     } catch (e) {
-      // If there's an error, log it and return false to prevent blocking the UI.
-      print('Error checking for pending cancellation: $e');
+      debugPrint('Error checking for pending cancellation: $e');
       return false;
     }
   }
 
-  // --- NEW METHODS FOR THE COMMENT FEATURE ---
-
-// 1. Fetches all comments for a given event ID.
-// --- COMMENT FEATURE: use event_comments and commenter_user_id ---
-
-// 1. Fetch all comments for an event and attach commenter profile as `user`
+  // [CORRECTED] This now uses the reliable RPC function which works with the fixed security rule.
   Future<List<Map<String, dynamic>>> fetchCommentsForEvent(
       String eventId) async {
     try {
-      // 1) get comments
-      final commentsResponse = await supabase
-          .from('event_comments')
-          .select()
-          .eq('event_id', eventId)
-          .order('created_at', ascending: true);
+      final response = await supabase.rpc(
+        'get_comments_for_event',
+        params: {'p_event_id': eventId},
+      );
 
-      final comments = (commentsResponse as List).cast<Map<String, dynamic>>();
+      final comments = (response as List).cast<Map<String, dynamic>>();
 
-      // 2) collect unique commenter ids
-      final Set<String> userIdSet = {};
-      for (final c in comments) {
-        final id = c['commenter_user_id'];
-        if (id != null) userIdSet.add(id.toString());
-      }
-      final userIds = userIdSet.toList();
-
-      // 3) fetch user profiles in one go (if any)
-      Map<String, Map<String, dynamic>> usersMap = {};
-      if (userIds.isNotEmpty) {
-        // IMPORTANT: for UUID columns, don't wrap ids in single quotes here.
-        // Build a parenthesized list like (uuid1,uuid2,uuid3)
-        final idsString = userIds.join(',');
-
-        final usersResponse = await supabase
-            .from('users')
-            .select('id, username, avatar_url')
-            .filter('id', 'in', '($idsString)');
-
-        final users = (usersResponse as List).cast<Map<String, dynamic>>();
-        for (final u in users) {
-          usersMap[u['id'].toString()] = u;
-        }
-      }
-
-      // 4) attach user data to comments and normalize field names for UI
       final enriched = comments.map((c) {
-        final commenterId = c['commenter_user_id']?.toString();
-        c['user'] = commenterId != null ? usersMap[commenterId] : null;
-        // normalize content name expected by your UI
-        c['content'] = c['text'] ?? c['content'] ?? '';
+        c['content'] = c['text'] ?? '';
         return c;
       }).toList();
 
@@ -477,10 +421,10 @@ class SupabaseService {
     }
   }
 
-// 2. Add a comment into event_comments (uses commenter_user_id)
   Future<void> addComment({
     required String eventId,
     required String content,
+    String? parentCommentId,
   }) async {
     final userId = AuthService.instance.currentUser?.id;
     if (userId == null) throw Exception('User not logged in');
@@ -491,13 +435,13 @@ class SupabaseService {
         'event_id': eventId,
         'commenter_user_id': userId,
         'text': content.trim(),
+        'parent_comment_id': parentCommentId,
       });
     } catch (e) {
       throw Exception('Error posting comment: $e');
     }
   }
 
-// 3. Delete a specific comment from event_comments
   Future<void> deleteComment(String commentId) async {
     try {
       await supabase.from('event_comments').delete().eq('id', commentId);
@@ -506,45 +450,30 @@ class SupabaseService {
     }
   }
 
-  // Method to get a public URL for a file in Supabase Storage
-  String getPublicUrl(String filePath) {
-    // Assuming files are in a bucket named 'event_media' (adjust if different)
-    try {
-      final publicUrl =
-          supabase.storage.from('event_media').getPublicUrl(filePath);
-      return publicUrl;
-    } catch (e) {
-      print('Error getting public URL for $filePath: $e');
-      throw Exception('Could not get public URL for $filePath');
-    }
+  Future<void> likeComment(String commentId) async {
+    final userId = AuthService.instance.currentUser?.id;
+    if (userId == null) throw Exception('User not logged in');
+    await supabase.from('comment_likes').insert({
+      'comment_id': commentId,
+      'user_id': userId,
+    });
   }
 
-  Future<void> requestPayout(double amount) async {
-    try {
-      final response = await supabase.functions.invoke(
-        'request-payout',
-        body: {'amount': amount},
-      );
-      if (response.status != 200) {
-        final errorMsg =
-            response.data?['error'] ?? 'Failed to submit payout request.';
-        throw Exception(errorMsg);
-      }
-    } catch (e) {
-      throw Exception(e.toString());
-    }
+  Future<void> unlikeComment(String commentId) async {
+    final userId = AuthService.instance.currentUser?.id;
+    if (userId == null) throw Exception('User not logged in');
+    await supabase.from('comment_likes').delete().match({
+      'comment_id': commentId,
+      'user_id': userId,
+    });
   }
 
   Future<void> initNotifications() async {
     final messaging = FirebaseMessaging.instance;
 
-    // Request permission from the user to show notifications (required for iOS and Android 13+)
     await messaging.requestPermission();
-
-    // Get the unique FCM token for this device
     final fcmToken = await messaging.getToken();
 
-    // Save the token to your Supabase database
     final userId = AuthService.instance.currentUser?.id;
     if (fcmToken != null && userId != null) {
       try {
@@ -552,8 +481,6 @@ class SupabaseService {
             .from('users')
             .update({'fcm_token': fcmToken}).eq('id', userId);
       } catch (e) {
-        // It's good practice to handle potential errors,
-        // but we don't want to block the user if it fails.
         debugPrint('Error saving FCM token: $e');
       }
     }
@@ -562,23 +489,18 @@ class SupabaseService {
   Future<List<Map<String, dynamic>>> getGroupMembers(String groupId) async {
     final response = await supabase
         .from('group_members')
-        .select('users(*)') // This joins and fetches the full user profile
+        .select('users(*)')
         .eq('group_id', groupId);
 
-    // The result is a list of objects like [{ "users": { ... } }].
-    // We need to extract just the user data.
     return (response as List)
         .map((row) => row['users'] as Map<String, dynamic>)
         .toList();
   }
 
-  // In lib/shared/services/supabase_service.dart
-
   Future<List<Map<String, dynamic>>> findSubscribers(String searchText) async {
     final userId = AuthService.instance.currentUser?.id;
     if (userId == null) return [];
 
-    // Step 1: Get all IDs of users who subscribe to you
     final subsResponse = await supabase
         .from('timetable_subscriptions')
         .select('subscriber_id')
@@ -590,13 +512,10 @@ class SupabaseService {
 
     if (subscriberIds.isEmpty) return [];
 
-    // Step 2: Search for users within that list of IDs by username
-    // THIS IS THE CORRECTED QUERY SYNTAX
     final usersResponse = await supabase
         .from('users')
         .select()
-        .filter(
-            'id', 'in', subscriberIds) // Use .filter() for the 'in' operator
+        .inFilter('id', subscriberIds)
         .ilike('username', '%$searchText%');
 
     return (usersResponse as List).cast<Map<String, dynamic>>();
@@ -621,7 +540,6 @@ class SupabaseService {
     final userId = AuthService.instance.currentUser?.id;
     if (userId == null) return [];
 
-    // Step 1: Get all IDs of users who subscribe to you
     final subsResponse = await supabase
         .from('timetable_subscriptions')
         .select('subscriber_id')
@@ -632,7 +550,6 @@ class SupabaseService {
 
     if (subscriberIds.isEmpty) return [];
 
-    // Step 2: Get all IDs of users who are already in the group
     final membersResponse = await supabase
         .from('group_members')
         .select('user_id')
@@ -641,17 +558,15 @@ class SupabaseService {
         .map((row) => row['user_id'] as String)
         .toList();
 
-    // Step 3: Find the subscribers who are not already members
     final addableIds =
         subscriberIds.where((id) => !memberIds.contains(id)).toList();
 
     if (addableIds.isEmpty) return [];
 
-    // Step 4: Fetch the profiles for the addable subscribers
     final usersResponse = await supabase
         .from('users')
         .select('id, username, avatar_url')
-        .filter('id', 'in', addableIds); // <-- THE CORRECTED LINE
+        .inFilter('id', addableIds);
 
     return (usersResponse as List).cast<Map<String, dynamic>>();
   }
