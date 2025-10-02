@@ -143,7 +143,7 @@ class SupabaseService {
     );
   }
 
-  // [RESTORED] Using your original, correct code which now works with the fixed security rule.
+  // Fetches the list of users that the current user is subscribed to.
   Future<List<Map<String, dynamic>>> getMySharedUsers() async {
     final userId = AuthService.instance.currentUser?.id;
     if (userId == null) return [];
@@ -399,7 +399,6 @@ class SupabaseService {
     }
   }
 
-  // [CORRECTED] This now uses the reliable RPC function which works with the fixed security rule.
   Future<List<Map<String, dynamic>>> fetchCommentsForEvent(
       String eventId) async {
     try {
@@ -575,6 +574,157 @@ class SupabaseService {
     await supabase.rpc(
       'send_event_reminder',
       params: {'event_id_to_remind': eventId},
+    );
+  }
+
+  // --- NEW CHAT METHODS ---
+
+  Future<List<Map<String, dynamic>>> getConversations() async {
+    final response = await supabase.rpc('get_my_conversations');
+    return (response as List).cast<Map<String, dynamic>>();
+  }
+
+  Future<String> createOrGetConversation(String otherUserId) async {
+    final response = await supabase.rpc(
+      'create_or_get_conversation',
+      params: {'p_other_user_id': otherUserId},
+    );
+    return response as String;
+  }
+
+  Future<List<Map<String, dynamic>>> getMessages(String conversationId) async {
+    final response = await supabase
+        .from('chat_messages')
+        .select('*, author:user_id(username, avatar_url)')
+        .eq('conversation_id', conversationId)
+        .order('created_at', ascending: true);
+    return (response as List).cast<Map<String, dynamic>>();
+  }
+
+  Future<void> sendMessage({
+    required String conversationId,
+    required String content,
+    String? attachmentUrl,
+    String? attachmentType,
+    String? fileName, // NEW
+  }) async {
+    final userId = AuthService.instance.currentUser?.id;
+    if (userId == null) throw Exception('User not logged in');
+
+    if (content.trim().isEmpty && attachmentUrl == null) return;
+
+    await supabase.from('chat_messages').insert({
+      'conversation_id': conversationId,
+      'user_id': userId,
+      'content': content,
+      'attachment_url': attachmentUrl,
+      'attachment_type': attachmentType,
+      'file_name': fileName, // NEW
+    });
+  }
+
+  // This sets up the real-time subscription
+  RealtimeChannel subscribeToMessages(
+      String conversationId, void Function(Map<String, dynamic>) onNewMessage) {
+    final channel = supabase
+        .channel('chat:$conversationId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'chat_messages',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'conversation_id',
+            value: conversationId,
+          ),
+          callback: (payload) {
+            // Before passing the new message, we need to fetch the author's details
+            // because the real-time payload only contains the user_id.
+            final newMessage = payload.newRecord;
+            fetchUserProfile(newMessage['user_id']).then((authorProfile) {
+              newMessage['author'] = authorProfile;
+              onNewMessage(newMessage);
+            });
+          },
+        )
+        .subscribe();
+
+    return channel;
+  }
+
+  Future<void> updateChatPrivacy(String newPrivacy) async {
+    final userId = AuthService.instance.currentUser?.id;
+    if (userId == null) throw Exception('User not logged in');
+
+    await supabase
+        .from('users')
+        .update({'chat_privacy': newPrivacy}).eq('id', userId);
+  }
+
+  Future<List<Map<String, dynamic>>> searchAllUsers(String searchText) async {
+    final userId = AuthService.instance.currentUser?.id;
+    if (searchText.trim().isEmpty) return [];
+
+    final response = await supabase
+        .from('users')
+        .select('id, username, avatar_url')
+        .ilike('username', '%${searchText.trim()}%')
+        .not('id', 'eq', userId) // Exclude the current user from search results
+        .limit(10);
+
+    return (response as List).cast<Map<String, dynamic>>();
+  }
+
+  Future<bool> isSubscribedTo(String ownerId) async {
+    final userId = AuthService.instance.currentUser?.id;
+    if (userId == null) return false;
+
+    final response = await supabase
+        .from('timetable_subscriptions')
+        .select('id')
+        .match({'owner_id': ownerId, 'subscriber_id': userId}).maybeSingle();
+
+    return response != null;
+  }
+
+  Future<List<Map<String, dynamic>>> getSuggestedUsers() async {
+    final response = await supabase.rpc('get_suggested_users');
+    return (response as List).cast<Map<String, dynamic>>();
+  }
+
+  Future<void> uploadChatAttachment({
+    required String conversationId,
+    required String filePath,
+    required String fileName,
+    required List<int> fileBytes,
+    required String attachmentType, // 'image' or 'file'
+  }) async {
+    final userId = AuthService.instance.currentUser?.id;
+    if (userId == null) throw Exception('User not logged in');
+
+    // 1. Check and increment the user's daily count.
+    await supabase.rpc('check_and_increment_attachment_count');
+
+    // 2. Proceed with the upload.
+    final storagePath = '$conversationId/$userId/$fileName';
+
+    await supabase.storage.from('chat_attachments').uploadBinary(
+          storagePath,
+          Uint8List.fromList(fileBytes),
+          fileOptions: FileOptions(upsert: false),
+        );
+
+    // 3. Get the public URL.
+    final attachmentUrl =
+        supabase.storage.from('chat_attachments').getPublicUrl(storagePath);
+
+    // 4. Send a new message with the attachment URL and file name.
+    await sendMessage(
+      conversationId: conversationId,
+      content: '', // Optional: you could add a caption here later
+      attachmentUrl: attachmentUrl,
+      attachmentType: attachmentType,
+      fileName: fileName,
     );
   }
 }

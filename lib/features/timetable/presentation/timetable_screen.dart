@@ -2,6 +2,7 @@
 
 import 'dart:convert';
 import 'dart:io';
+import 'package:class_rep/features/chat/presentation/conversations_screen.dart';
 import 'package:class_rep/features/timetable/presentation/manage_groups_screen.dart';
 import 'package:class_rep/shared/services/auth_service.dart';
 import 'package:class_rep/shared/services/supabase_service.dart';
@@ -373,6 +374,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
                       icon: const Icon(Icons.add_circle,
                           color: Colors.cyanAccent, size: 30),
                       onPressed: () async {
+                        // ... (This onPressed logic remains the same)
                         if (codeController.text.trim().isEmpty) return;
                         try {
                           await SupabaseService.instance
@@ -446,6 +448,24 @@ class _TimetableScreenState extends State<TimetableScreen> {
                 ),
               ),
               const Divider(color: lightSuedeNavy),
+
+              // --- THIS IS THE NEW LIST TILE ---
+              ListTile(
+                leading: const Icon(CupertinoIcons.chat_bubble_2,
+                    color: Colors.white70),
+                title: const Text('Chit Chat',
+                    style: TextStyle(color: Colors.white)),
+                onTap: () {
+                  Navigator.pop(context); // Close menu
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (c) => const ConversationsScreen()),
+                  );
+                },
+              ),
+              // --- END OF NEW LIST TILE ---
+
               ListTile(
                 leading: const Icon(Icons.group, color: Colors.white70),
                 title: const Text('Manage Groups',
