@@ -14,6 +14,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:class_rep/shared/services/notification_service.dart';
 
 // --- THEME COLORS ---
 const Color darkSuedeNavy = Color(0xFF1A1B2C);
@@ -1046,9 +1047,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(24),
-        ),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (ctx) => StatefulBuilder(
         builder: (modalContext, setModalState) => GestureDetector(
@@ -1066,15 +1065,13 @@ class _TimetableScreenState extends State<TimetableScreen> {
                   padding: const EdgeInsets.all(24.0),
                   children: [
                     Center(
-                      child: Container(
-                        width: 40,
-                        height: 4,
-                        margin: const EdgeInsets.only(bottom: 16),
-                        decoration: BoxDecoration(
-                            color: Colors.grey[700],
-                            borderRadius: BorderRadius.circular(10)),
-                      ),
-                    ),
+                        child: Container(
+                            width: 40,
+                            height: 4,
+                            margin: const EdgeInsets.only(bottom: 16),
+                            decoration: BoxDecoration(
+                                color: Colors.grey[700],
+                                borderRadius: BorderRadius.circular(10)))),
                     Text(isEditing ? 'Edit Event' : 'Add New Event',
                         textAlign: TextAlign.center,
                         style: const TextStyle(
@@ -1211,13 +1208,15 @@ class _TimetableScreenState extends State<TimetableScreen> {
                       ),
                       onPressed: () async {
                         if (formKey.currentState!.validate()) {
-                          final day = _selectedDay!;
+                          // The selected date from the calendar might be different from today
+                          final day = isEditing
+                              ? DateTime.parse(event['start_time']).toLocal()
+                              : _selectedDay!;
+
                           final startDateTime = DateTime(day.year, day.month,
                               day.day, startTime.hour, startTime.minute);
-
                           var endDateTime = DateTime(day.year, day.month,
                               day.day, endTime.hour, endTime.minute);
-
                           if (endDateTime.isBefore(startDateTime)) {
                             endDateTime =
                                 endDateTime.add(const Duration(days: 1));
@@ -1231,29 +1230,50 @@ class _TimetableScreenState extends State<TimetableScreen> {
                                     filePath: pickedImage!.path,
                                     fileBytes: imageBytes.toList());
                           }
+
                           try {
                             if (isEditing) {
                               await SupabaseService.instance.updateEvent(
-                                  eventId: event['id'],
-                                  title: titleController.text,
-                                  description: descriptionController.text,
-                                  startTime: startDateTime,
-                                  endTime: endDateTime, // Use corrected time
-                                  groupId: selectedGroupId,
-                                  imageUrl: finalImageUrl,
-                                  linkUrl: linkUrlController.text,
-                                  repeat: repeatValue);
+                                eventId: event['id'],
+                                title: titleController.text,
+                                description: descriptionController.text,
+                                startTime: startDateTime,
+                                endTime: endDateTime,
+                                groupId: selectedGroupId,
+                                imageUrl: finalImageUrl,
+                                linkUrl: linkUrlController.text,
+                                repeat: repeatValue,
+                              );
                             } else {
                               await SupabaseService.instance.createEvent(
-                                  title: titleController.text,
-                                  description: descriptionController.text,
-                                  startTime: startDateTime,
-                                  endTime: endDateTime, // Use corrected time
-                                  groupId: selectedGroupId,
-                                  imageUrl: finalImageUrl,
-                                  linkUrl: linkUrlController.text,
-                                  repeat: repeatValue);
+                                title: titleController.text,
+                                description: descriptionController.text,
+                                startTime: startDateTime,
+                                endTime: endDateTime,
+                                groupId: selectedGroupId,
+                                imageUrl: finalImageUrl,
+                                linkUrl: linkUrlController.text,
+                                repeat: repeatValue,
+                              );
                             }
+
+                            // --- THIS IS THE NEW LOGIC ---
+                            // We create a unique ID from the event title and time.
+                            // This ensures that if we edit the event, we are updating the same notification.
+                            final notificationId =
+                                (titleController.text.hashCode +
+                                        startDateTime.millisecondsSinceEpoch)
+                                    .remainder(2147483647);
+
+                            await NotificationService.instance
+                                .scheduleEventNotification(
+                              id: notificationId,
+                              title: titleController.text,
+                              body: 'Your event is starting now!',
+                              scheduledTime: startDateTime,
+                            );
+                            // --- END OF NEW LOGIC ---
+
                             if (!mounted) return;
                             Navigator.of(context).pop();
                             await _loadAllData();
@@ -1261,13 +1281,10 @@ class _TimetableScreenState extends State<TimetableScreen> {
                             if (!mounted) return;
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
-                                content: Text(
-                                  isEditing
-                                      ? 'Could not save changes. Please try again.'
-                                      : 'Could not create event. Please try again.',
-                                ),
-                                backgroundColor: Colors.redAccent,
-                              ),
+                                  content: Text(isEditing
+                                      ? 'Could not save changes.'
+                                      : 'Could not create event.'),
+                                  backgroundColor: Colors.redAccent),
                             );
                           }
                         }
@@ -1279,53 +1296,67 @@ class _TimetableScreenState extends State<TimetableScreen> {
                               fontSize: 16)),
                     ),
                     if (isEditing)
-                      TextButton.icon(
-                        icon: const Icon(Icons.delete_outline,
-                            color: Colors.redAccent),
-                        label: const Text('Delete Event',
-                            style: TextStyle(color: Colors.redAccent)),
-                        onPressed: () async {
-                          final confirm = await showDialog<bool>(
-                            context: context,
-                            builder: (dialogContext) => AlertDialog(
-                              backgroundColor: darkSuedeNavy,
-                              title: const Text('Confirm Deletion',
-                                  style: TextStyle(color: Colors.white)),
-                              content: const Text(
-                                  'Are you sure you want to delete this event series?',
-                                  style: TextStyle(color: Colors.white70)),
-                              actions: [
-                                TextButton(
-                                    onPressed: () =>
-                                        Navigator.of(dialogContext).pop(false),
-                                    child: const Text('Cancel')),
-                                TextButton(
-                                    onPressed: () =>
-                                        Navigator.of(dialogContext).pop(true),
-                                    child: const Text('Delete',
-                                        style: TextStyle(
-                                            color: Colors.redAccent))),
-                              ],
-                            ),
-                          );
-                          if (confirm == true) {
-                            try {
-                              Navigator.of(context).pop();
-                              await SupabaseService.instance
-                                  .deleteEvent(event['id']);
-                              await _loadAllData();
-                            } catch (e) {
-                              if (!mounted) return;
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                      'Could not delete event. Please try again.'),
-                                  backgroundColor: Colors.redAccent,
-                                ),
-                              );
+                      Padding(
+                        padding: const EdgeInsets.only(top: 8.0),
+                        child: TextButton.icon(
+                          onPressed: () async {
+                            final confirm = await showDialog<bool>(
+                              context: context,
+                              builder: (dialogContext) => AlertDialog(
+                                backgroundColor: darkSuedeNavy,
+                                title: const Text('Confirm Deletion',
+                                    style: TextStyle(color: Colors.white)),
+                                content: const Text(
+                                    'Are you sure you want to delete this event series?',
+                                    style: TextStyle(color: Colors.white70)),
+                                actions: [
+                                  TextButton(
+                                      onPressed: () =>
+                                          Navigator.of(dialogContext)
+                                              .pop(false),
+                                      child: const Text('Cancel')),
+                                  TextButton(
+                                      onPressed: () =>
+                                          Navigator.of(dialogContext).pop(true),
+                                      child: const Text('Delete',
+                                          style: TextStyle(
+                                              color: Colors.redAccent))),
+                                ],
+                              ),
+                            );
+                            if (confirm == true) {
+                              try {
+                                // --- THIS IS THE NEW LOGIC ---
+                                // Also cancel the notification when deleting the event
+                                final notificationId =
+                                    (event['title'].hashCode +
+                                            DateTime.parse(event['start_time'])
+                                                .millisecondsSinceEpoch)
+                                        .remainder(2147483647);
+                                await NotificationService.instance
+                                    .cancelNotification(notificationId);
+                                // --- END OF NEW LOGIC ---
+
+                                if (!mounted) return;
+                                Navigator.of(context).pop();
+                                await SupabaseService.instance
+                                    .deleteEvent(event['id']);
+                                await _loadAllData();
+                              } catch (e) {
+                                if (!mounted) return;
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                      content: Text('Could not delete event.'),
+                                      backgroundColor: Colors.redAccent),
+                                );
+                              }
                             }
-                          }
-                        },
+                          },
+                          icon: const Icon(Icons.delete_outline,
+                              color: Colors.redAccent),
+                          label: const Text('Delete Event',
+                              style: TextStyle(color: Colors.redAccent)),
+                        ),
                       ),
                   ],
                 ),

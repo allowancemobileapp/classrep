@@ -17,12 +17,14 @@ android {
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        // THIS IS NEW
+        isCoreLibraryDesugaringEnabled = true 
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
     }
 
     kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_11.toString()
+        jvmTarget = "1.8" // Adjusted to match compatibility
     }
 
     signingConfigs {
@@ -40,12 +42,13 @@ android {
     }
 
     defaultConfig {
-        // IMPORTANT: Change this to your own unique Application ID before publishing.
         applicationId = "com.yourcompany.classrep"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        // THIS IS NEW
+        multiDexEnabled = true
     }
 
     buildTypes {
@@ -57,4 +60,9 @@ android {
 
 flutter {
     source = "../.."
+}
+
+// THIS ENTIRE BLOCK IS NEW
+dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
 }
