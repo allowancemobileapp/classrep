@@ -17,28 +17,40 @@ class NewChatScreen extends StatefulWidget {
 }
 
 class _NewChatScreenState extends State<NewChatScreen> {
-  final TextEditingController _searchController = TextEditingController();
+  final _searchController = TextEditingController();
+  final _scrollController = ScrollController(); // For infinite scroll
+
   List<Map<String, dynamic>> _searchResults = [];
   List<Map<String, dynamic>> _suggestedUsers = [];
   Timer? _debounce;
+
+  // State for suggestions pagination
+  int _currentPage = 1;
   bool _isLoadingSuggestions = true;
+  bool _isLoadingMore = false;
+  bool _hasMore = true;
+
   bool _isSearching = false;
 
   @override
   void initState() {
     super.initState();
     _searchController.addListener(_onSearchChanged);
-    _loadSuggestions();
+    _scrollController.addListener(_onScroll);
+    _loadInitialSuggestions(); // Renamed for clarity
   }
 
-  Future<void> _loadSuggestions() async {
+  Future<void> _loadInitialSuggestions() async {
     setState(() => _isLoadingSuggestions = true);
+
     try {
-      final results = await SupabaseService.instance.getSuggestedUsers();
+      final results = await SupabaseService.instance.getSuggestedUsers(page: 1);
       if (mounted) {
         setState(() {
           _suggestedUsers = results;
           _isLoadingSuggestions = false;
+          _currentPage = 1;
+          _hasMore = results.isNotEmpty;
         });
       }
     } catch (e) {
@@ -46,19 +58,46 @@ class _NewChatScreenState extends State<NewChatScreen> {
     }
   }
 
+  Future<void> _loadMoreSuggestions() async {
+    if (_isLoadingMore || !_hasMore) return;
+    setState(() => _isLoadingMore = true);
+
+    final nextPage = _currentPage + 1;
+    final results =
+        await SupabaseService.instance.getSuggestedUsers(page: nextPage);
+
+    if (mounted) {
+      setState(() {
+        if (results.isNotEmpty) {
+          _suggestedUsers.addAll(results);
+          _currentPage = nextPage;
+        } else {
+          _hasMore = false;
+        }
+        _isLoadingMore = false;
+      });
+    }
+  }
+
   @override
   void dispose() {
-    _searchController.removeListener(_onSearchChanged);
     _searchController.dispose();
+    _scrollController.dispose();
     _debounce?.cancel();
     super.dispose();
   }
 
+  void _onScroll() {
+    // Load more when user is 200 pixels from the bottom
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200) {
+      _loadMoreSuggestions();
+    }
+  }
+
   void _onSearchChanged() {
     if (_debounce?.isActive ?? false) _debounce!.cancel();
-    _debounce = Timer(const Duration(milliseconds: 300), () {
-      _performSearch();
-    });
+    _debounce = Timer(const Duration(milliseconds: 300), _performSearch);
   }
 
   Future<void> _performSearch() async {
@@ -91,8 +130,7 @@ class _NewChatScreenState extends State<NewChatScreen> {
       if (!mounted) return;
 
       Navigator.of(context).pop();
-      Navigator.of(context)
-          .pop(true); // Pop this screen and signal that a new chat was started.
+      Navigator.of(context).pop(true);
 
       Navigator.of(context).push(
         MaterialPageRoute(
@@ -106,13 +144,14 @@ class _NewChatScreenState extends State<NewChatScreen> {
         ),
       );
     } catch (e) {
-      if (!mounted) return;
-      Navigator.of(context).pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text('Error starting chat: ${e.toString()}'),
-            backgroundColor: Colors.red),
-      );
+      if (mounted) {
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text('Error starting chat: ${e.toString()}'),
+              backgroundColor: Colors.red),
+        );
+      }
     }
   }
 
@@ -157,9 +196,8 @@ class _NewChatScreenState extends State<NewChatScreen> {
     );
   }
 
-  // UPDATED: This now builds a GridView of cards
   Widget _buildSuggestionsList() {
-    if (_isLoadingSuggestions) {
+    if (_isLoadingSuggestions && _suggestedUsers.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
     if (_suggestedUsers.isEmpty) {
@@ -180,6 +218,7 @@ class _NewChatScreenState extends State<NewChatScreen> {
         ),
         Expanded(
           child: GridView.builder(
+            controller: _scrollController, // Attach the scroll controller
             padding: const EdgeInsets.all(16),
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 2,
@@ -187,8 +226,11 @@ class _NewChatScreenState extends State<NewChatScreen> {
               mainAxisSpacing: 16,
               childAspectRatio: 0.8,
             ),
-            itemCount: _suggestedUsers.length,
+            itemCount: _suggestedUsers.length + (_isLoadingMore ? 1 : 0),
             itemBuilder: (context, index) {
+              if (index == _suggestedUsers.length) {
+                return const Center(child: CircularProgressIndicator());
+              }
               final user = _suggestedUsers[index];
               return _SuggestedUserCard(
                 userProfile: user,
@@ -232,7 +274,6 @@ class _NewChatScreenState extends State<NewChatScreen> {
   }
 }
 
-// --- NEW WIDGET FOR DISPLAYING SUGGESTED USER CARDS ---
 class _SuggestedUserCard extends StatelessWidget {
   final Map<String, dynamic> userProfile;
   final VoidCallback onTap;

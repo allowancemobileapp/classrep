@@ -1,13 +1,15 @@
 // lib/features/profile/presentation/profile_screen.dart
 
 import 'package:class_rep/features/onboarding/presentation/splash_screen.dart';
+import 'package:class_rep/features/profile/presentation/create_gist_screen.dart';
 import 'package:class_rep/features/profile/presentation/edit_profile_screen.dart';
+import 'package:class_rep/features/profile/presentation/gist_viewer_screen.dart';
 import 'package:class_rep/shared/services/auth_service.dart';
 import 'package:class_rep/shared/services/supabase_service.dart';
 import 'package:class_rep/shared/widgets/glass_container.dart';
+import 'package:class_rep/shared/widgets/gist_avatar.dart'; // Make sure this import is here
 import 'package:flutter/material.dart';
 
-// --- THEME COLORS ---
 const Color darkSuedeNavy = Color(0xFF1A1B2C);
 const Color lightSuedeNavy = Color(0xFF2A2C40);
 
@@ -29,6 +31,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _loadProfile() async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
     try {
       final userId = AuthService.instance.currentUser?.id;
@@ -61,7 +64,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       appBar: AppBar(
         backgroundColor: darkSuedeNavy,
         title: const Text('Profile'),
-        automaticallyImplyLeading: false, // This removes the back button
+        automaticallyImplyLeading: false,
       ),
       body: _isLoading
           ? const Center(
@@ -75,22 +78,70 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   children: [
                     Column(
                       children: [
-                        CircleAvatar(
-                          radius: 50,
-                          backgroundColor: lightSuedeNavy,
-                          backgroundImage: _userProfile?['avatar_url'] != null
-                              ? NetworkImage(_userProfile!['avatar_url'])
-                              : null,
-                          child: _userProfile?['avatar_url'] == null
-                              ? Text(
-                                  _userProfile?['display_name']
+                        // --- THIS IS THE FULLY CORRECTED WIDGET ---
+                        SizedBox(
+                          width: 110,
+                          height: 110,
+                          child: Stack(
+                            clipBehavior: Clip.none,
+                            fit: StackFit.expand,
+                            children: [
+                              GestureDetector(
+                                onTap: () {
+                                  final bool hasGist =
+                                      _userProfile?['has_active_gist'] ?? false;
+                                  if (hasGist) {
+                                    Navigator.of(context)
+                                        .push(MaterialPageRoute(
+                                            builder: (_) => GistViewerScreen(
+                                                  userId: _userProfile!['id'],
+                                                  username:
+                                                      _userProfile!['username'],
+                                                  avatarUrl: _userProfile![
+                                                          'avatar_url'] ??
+                                                      '',
+                                                )));
+                                  } else {
+                                    // If no gist, tap also goes to create screen
+                                    Navigator.of(context)
+                                        .push(MaterialPageRoute(
+                                            builder: (_) =>
+                                                const CreateGistScreen()))
+                                        .then((_) => _loadProfile());
+                                  }
+                                },
+                                child: GistAvatar(
+                                  radius: 50,
+                                  avatarUrl: _userProfile?['avatar_url'],
+                                  fallbackText: _userProfile?['display_name']
                                           ?.substring(0, 1)
                                           .toUpperCase() ??
                                       '?',
-                                  style: const TextStyle(
-                                      fontSize: 40, color: Colors.white),
-                                )
-                              : null,
+                                  hasActiveGist:
+                                      _userProfile?['has_active_gist'] ?? false,
+                                ),
+                              ),
+                              Positioned(
+                                bottom: 0,
+                                right: -5,
+                                child: GestureDetector(
+                                  onTap: () {
+                                    Navigator.of(context)
+                                        .push(MaterialPageRoute(
+                                            builder: (_) =>
+                                                const CreateGistScreen()))
+                                        .then((_) => _loadProfile());
+                                  },
+                                  child: const CircleAvatar(
+                                    radius: 18,
+                                    backgroundColor: Colors.cyanAccent,
+                                    child: Icon(Icons.add,
+                                        color: Colors.black, size: 22),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                         const SizedBox(height: 16),
                         Text(
@@ -127,7 +178,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 : 'Not connected.',
                           ),
                           const Divider(color: lightSuedeNavy),
-                          // --- ADD THIS ---
                           _buildInfoTile(
                             icon: Icons.account_balance_wallet_outlined,
                             title: 'USDT Wallet (TRC-20)',
@@ -154,9 +204,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         await Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) =>
-                                EditProfileScreen(profile: _userProfile!),
-                          ),
+                              builder: (context) =>
+                                  EditProfileScreen(profile: _userProfile!)),
                         );
                         _loadProfile();
                       },

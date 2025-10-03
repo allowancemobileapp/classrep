@@ -150,7 +150,9 @@ class SupabaseService {
 
     final response = await supabase
         .from('timetable_subscriptions')
-        .select('owner:owner_id(id, username, display_name, avatar_url)')
+        // ADDED 'has_active_gist' to the selection
+        .select(
+            'owner:owner_id(id, username, display_name, avatar_url, has_active_gist)')
         .eq('subscriber_id', userId);
 
     return (response as List)
@@ -687,8 +689,15 @@ class SupabaseService {
     return response != null;
   }
 
-  Future<List<Map<String, dynamic>>> getSuggestedUsers() async {
-    final response = await supabase.rpc('get_suggested_users');
+  Future<List<Map<String, dynamic>>> getSuggestedUsers(
+      {int page = 1, int pageSize = 10}) async {
+    final response = await supabase.rpc(
+      'get_suggested_users',
+      params: {
+        'p_limit': pageSize,
+        'p_offset': (page - 1) * pageSize,
+      },
+    );
     return (response as List).cast<Map<String, dynamic>>();
   }
 
@@ -726,5 +735,158 @@ class SupabaseService {
       attachmentType: attachmentType,
       fileName: fileName,
     );
+  }
+
+  Future<String> createGroupConversation({
+    required String groupName,
+    required List<String> participantIds,
+  }) async {
+    final response = await supabase.rpc(
+      'create_group_conversation',
+      params: {
+        'p_group_name': groupName,
+        'p_participant_ids': participantIds,
+      },
+    );
+    return response as String;
+  }
+
+  Future<List<Map<String, dynamic>>> getGroupParticipants(
+      String conversationId) async {
+    final response = await supabase.rpc(
+      'chat_get_group_participants', // RENAMED
+      params: {'p_conversation_id': conversationId},
+    );
+    return (response as List).cast<Map<String, dynamic>>();
+  }
+
+  Future<void> addGroupParticipant({
+    required String conversationId,
+    required String userIdToAdd,
+  }) async {
+    await supabase.rpc(
+      'chat_add_group_participant', // RENAMED
+      params: {
+        'p_conversation_id': conversationId,
+        'p_user_id_to_add': userIdToAdd,
+      },
+    );
+  }
+
+  Future<void> removeGroupParticipant({
+    required String conversationId,
+    required String userIdToRemove,
+  }) async {
+    await supabase.rpc(
+      'chat_remove_group_participant', // RENAMED
+      params: {
+        'p_conversation_id': conversationId,
+        'p_user_id_to_remove': userIdToRemove,
+      },
+    );
+  }
+
+  Future<void> deleteGroupConversation(String conversationId) async {
+    await supabase.rpc(
+      'chat_delete_group_conversation', // RENAMED
+      params: {'p_conversation_id': conversationId},
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> getAddableChatGroupMembers({
+    required String conversationId,
+  }) async {
+    // 1. Get all of the user's subscriptions
+    final allSubscribers = await getMySharedUsers();
+    // 2. Get the group's current participants
+    final currentParticipants = await getGroupParticipants(conversationId);
+    final currentParticipantIds =
+        currentParticipants.map((p) => p['id']).toSet();
+
+    // 3. Filter out users who are already in the group
+    final addableMembers = allSubscribers.where((sub) {
+      return !currentParticipantIds.contains(sub['id']);
+    }).toList();
+
+    return addableMembers;
+  }
+
+  Future<String> getOrCreateGroupInviteCode(String conversationId) async {
+    final response = await supabase.rpc(
+      'get_or_create_chat_invite_code',
+      params: {'p_conversation_id': conversationId},
+    );
+    return response as String;
+  }
+
+  Future<String> joinGroupWithInviteCode(String inviteCode) async {
+    final response = await supabase.rpc(
+      'join_chat_group_with_invite_code',
+      params: {'p_invite_code': inviteCode},
+    );
+    return response as String;
+  }
+
+  Future<String> uploadGistMedia(XFile file) async {
+    final userId = AuthService.instance.currentUser?.id;
+    if (userId == null) throw Exception('User not logged in');
+
+    final fileBytes = await file.readAsBytes();
+    final fileExt = file.path.split('.').last;
+    final fileName = '${DateTime.now().millisecondsSinceEpoch}.$fileExt';
+    final filePath = '$userId/$fileName';
+
+    await supabase.storage.from('gists_media').uploadBinary(
+          filePath,
+          fileBytes,
+          fileOptions: FileOptions(contentType: file.mimeType),
+        );
+
+    return supabase.storage.from('gists_media').getPublicUrl(filePath);
+  }
+
+  Future<void> createGist({
+    required String type,
+    String? content,
+    String? mediaUrl,
+  }) async {
+    final userId = AuthService.instance.currentUser?.id;
+    if (userId == null) throw Exception('User not logged in');
+
+    // First, check if the user is allowed to post.
+    await supabase.rpc('check_and_increment_gist_count');
+
+    // Second, insert the new gist.
+    await supabase.from('gists').insert({
+      'user_id': userId,
+      'type': type,
+      'content': content,
+      'media_url': mediaUrl,
+    });
+
+    // FINALLY, call the new function to set the user's status to true.
+    await supabase.rpc('set_user_active_gist_status');
+  }
+
+  // Fetches all active gists for a specific user
+  Future<List<Map<String, dynamic>>> getGistsForUser(String userId) async {
+    final response = await supabase
+        .from('gists')
+        .select()
+        .eq('user_id', userId)
+        .order('created_at', ascending: true);
+    return (response as List).cast<Map<String, dynamic>>();
+  }
+
+  // Fetches a "feed" of users who have active gists, focusing on subscriptions
+  Future<List<Map<String, dynamic>>> getGistFeed(
+      {required bool onlySubscriptions}) async {
+    final response = await supabase.rpc(
+      'get_gist_feed_users',
+      params: {
+        'p_only_subscriptions': onlySubscriptions,
+      },
+    );
+    return (response as List).cast<Map<String, dynamic>>();
   }
 }

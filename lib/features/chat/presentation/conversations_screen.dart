@@ -2,8 +2,11 @@
 
 import 'package:class_rep/features/chat/presentation/chat_screen.dart';
 import 'package:class_rep/features/chat/presentation/new_chat_screen.dart';
+import 'package:class_rep/features/chat/presentation/new_group_screen.dart';
+import 'package:class_rep/features/profile/presentation/gist_viewer_screen.dart';
 import 'package:class_rep/shared/services/auth_service.dart';
 import 'package:class_rep/shared/services/supabase_service.dart';
+import 'package:class_rep/shared/widgets/gist_avatar.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -13,24 +16,38 @@ const Color lightSuedeNavy = Color(0xFF2A2C40);
 
 class ConversationsScreen extends StatefulWidget {
   const ConversationsScreen({super.key});
-
   @override
   State<ConversationsScreen> createState() => _ConversationsScreenState();
 }
 
 class _ConversationsScreenState extends State<ConversationsScreen> {
-  // This single Future will hold all our data to prevent multiple loading states
+  // We fetch 4 distinct pieces of data
   Future<
       (
         Map<String, dynamic>,
         List<Map<String, dynamic>>,
+        List<Map<String, dynamic>>,
         List<Map<String, dynamic>>
       )>? _dataFuture;
+  // State for the new search bar
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
 
   @override
   void initState() {
     super.initState();
     _loadInitialData();
+    _searchController.addListener(() {
+      setState(() {
+        _searchQuery = _searchController.text;
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   void _loadInitialData() {
@@ -39,36 +56,39 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
     });
   }
 
-  // This function now fetches everything we need in parallel
   Future<
       (
         Map<String, dynamic>,
         List<Map<String, dynamic>>,
+        List<Map<String, dynamic>>,
         List<Map<String, dynamic>>
       )> _fetchData() async {
-    final profileFuture = SupabaseService.instance
+    final profile = await SupabaseService.instance
         .fetchUserProfile(AuthService.instance.currentUser!.id);
+    final isPublic =
+        (profile['chat_privacy'] as String? ?? 'private') == 'public';
+
+    // Fetch conversations and subscriptions in parallel
     final conversationsFuture = SupabaseService.instance.getConversations();
     final subscriptionsFuture = SupabaseService.instance.getMySharedUsers();
+    // Only fetch the full gist feed if in public mode
+    final gistFeedFuture =
+        SupabaseService.instance.getGistFeed(onlySubscriptions: !isPublic);
 
-    // Await all three futures at the same time
     final results = await Future.wait(
-        [profileFuture, conversationsFuture, subscriptionsFuture]);
+        [conversationsFuture, subscriptionsFuture, gistFeedFuture]);
 
-    // Unpack the results
-    final profile = results[0] as Map<String, dynamic>;
-    final conversations = (results[1] as List).cast<Map<String, dynamic>>();
-    final subscriptions = (results[2] as List).cast<Map<String, dynamic>>();
+    final conversations = (results[0] as List).cast<Map<String, dynamic>>();
+    final subscriptions = (results[1] as List).cast<Map<String, dynamic>>();
+    final gistFeedUsers = (results[2] as List).cast<Map<String, dynamic>>();
 
-    // Return them as a single object (a Record/Tuple)
-    return (profile, conversations, subscriptions);
+    return (profile, conversations, subscriptions, gistFeedUsers);
   }
 
   Future<void> _togglePrivacy(
       bool isPublic, Map<String, dynamic> userProfile) async {
     final isPlus = userProfile['is_plus'] as bool? ?? false;
     final newStatus = isPublic ? 'public' : 'private';
-
     if (isPublic && !isPlus) {
       showDialog(
         context: context,
@@ -77,21 +97,20 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
           title: const Text('Upgrade to Plus',
               style: TextStyle(color: Colors.white)),
           content: const Text(
-              'You must be a Plus subscriber to make your chat public and discoverable by anyone.',
+              'You must be a Plus subscriber to make your chat public.',
               style: TextStyle(color: Colors.white70)),
           actions: [
             TextButton(
                 onPressed: () => Navigator.of(dialogContext).pop(),
-                child: const Text('OK')),
+                child: const Text('OK'))
           ],
         ),
       );
       return;
     }
-
     try {
       await SupabaseService.instance.updateChatPrivacy(newStatus);
-      _loadInitialData(); // Re-fetch all data to ensure UI is consistent
+      _loadInitialData();
     } catch (e) {
       // Handle error
     }
@@ -115,13 +134,13 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
                       style: const TextStyle(color: Colors.red))));
         }
 
-        // Unpack all data from the single future's result
         final userProfile = snapshot.data!.$1;
         final allConversations = snapshot.data!.$2;
         final subscriptions = snapshot.data!.$3;
+        final gistFeedUsers = snapshot.data!.$4;
 
-        final chatPrivacy = userProfile['chat_privacy'] as String? ?? 'private';
-        final isPublic = chatPrivacy == 'public';
+        final isPublic =
+            (userProfile['chat_privacy'] as String? ?? 'private') == 'public';
 
         return Scaffold(
           backgroundColor: darkSuedeNavy,
@@ -133,40 +152,92 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
                 padding: const EdgeInsets.only(right: 8.0),
                 child: Row(
                   children: [
-                    Text(
-                      isPublic ? 'Public' : 'Private',
-                      style: TextStyle(
-                          color: isPublic ? Colors.cyanAccent : Colors.white70),
-                    ),
+                    Text(isPublic ? 'Public' : 'Private',
+                        style: TextStyle(
+                            color:
+                                isPublic ? Colors.cyanAccent : Colors.white70)),
                     const SizedBox(width: 4),
                     CupertinoSwitch(
-                      value: isPublic,
-                      onChanged: (value) => _togglePrivacy(value, userProfile),
-                      activeColor: Colors.cyanAccent,
-                    ),
+                        value: isPublic,
+                        onChanged: (value) =>
+                            _togglePrivacy(value, userProfile),
+                        activeColor: Colors.cyanAccent),
                   ],
                 ),
               ),
             ],
           ),
-          body: isPublic
-              ? _buildPublicView(allConversations, subscriptions)
-              : _buildPrivateView(subscriptions),
+          body: Column(
+            children: [
+              // CONDITIONALLY SHOW GIST FEED OR SEARCH BAR
+              if (isPublic)
+                _buildGistFeed(gistFeedUsers)
+              else
+                _buildSearchBar(),
+
+              Expanded(
+                child: isPublic
+                    ? _buildPublicView(allConversations, subscriptions)
+                    : _buildPrivateView(allConversations, subscriptions),
+              ),
+            ],
+          ),
           floatingActionButton: isPublic
               ? FloatingActionButton(
                   onPressed: () {
-                    Navigator.of(context)
-                        .push(
-                      MaterialPageRoute(
-                          builder: (context) => const NewChatScreen()),
-                    )
-                        .then((didStartChat) {
-                      if (didStartChat == true) _loadInitialData();
-                    });
+                    showModalBottomSheet(
+                      context: context,
+                      backgroundColor: lightSuedeNavy,
+                      builder: (context) {
+                        return SafeArea(
+                          child: Wrap(
+                            children: <Widget>[
+                              ListTile(
+                                leading: const Icon(Icons.person_add,
+                                    color: Colors.white70),
+                                title: const Text('New Chat',
+                                    style: TextStyle(color: Colors.white)),
+                                onTap: () {
+                                  Navigator.of(context).pop();
+                                  Navigator.of(context)
+                                      .push(
+                                    MaterialPageRoute(
+                                        builder: (context) =>
+                                            const NewChatScreen()),
+                                  )
+                                      .then((didStartChat) {
+                                    if (didStartChat == true)
+                                      _loadInitialData();
+                                  });
+                                },
+                              ),
+                              ListTile(
+                                leading: const Icon(Icons.group_add,
+                                    color: Colors.white70),
+                                title: const Text('New Group',
+                                    style: TextStyle(color: Colors.white)),
+                                onTap: () {
+                                  Navigator.of(context).pop();
+                                  Navigator.of(context)
+                                      .push(
+                                    MaterialPageRoute(
+                                        builder: (context) =>
+                                            const NewGroupScreen()),
+                                  )
+                                      .then((didCreateGroup) {
+                                    if (didCreateGroup == true)
+                                      _loadInitialData();
+                                  });
+                                },
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    );
                   },
                   backgroundColor: Colors.cyanAccent,
-                  child: const Icon(Icons.add_comment_outlined,
-                      color: Colors.black),
+                  child: const Icon(Icons.add, color: Colors.black),
                 )
               : null,
         );
@@ -174,55 +245,149 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
     );
   }
 
-  Widget _buildPrivateView(List<Map<String, dynamic>> subscriptions) {
-    if (subscriptions.isEmpty) {
-      return const Center(
-        child: Text('Your subscribed timetables will appear here.',
-            style: TextStyle(color: Colors.white70)),
-      );
-    }
-    return ListView.builder(
-      itemCount: subscriptions.length,
-      itemBuilder: (context, index) {
-        final user = subscriptions[index];
-        final username = user['username'] as String?;
-        final avatarUrl = user['avatar_url'] as String?;
-
-        return ListTile(
-          leading: CircleAvatar(
-            backgroundColor: lightSuedeNavy,
-            backgroundImage: (avatarUrl != null && avatarUrl.isNotEmpty)
-                ? NetworkImage(avatarUrl)
-                : null,
-            child: (avatarUrl == null || avatarUrl.isEmpty)
-                ? Text(username?.isNotEmpty == true
-                    ? username![0].toUpperCase()
-                    : '?')
-                : null,
-          ),
-          title: Text(username ?? 'User',
-              style: const TextStyle(
-                  color: Colors.white, fontWeight: FontWeight.bold)),
-          onTap: () async {
-            final conversationId = await SupabaseService.instance
-                .createOrGetConversation(user['id']);
-            if (!mounted) return;
-            final result = await Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (context) => ChatScreen(
-                  conversationId: conversationId,
-                  chatTitle: username ?? 'Chat',
-                  otherParticipantId: user['id'],
-                  otherParticipantUsername: username,
-                  otherParticipantAvatarUrl: avatarUrl,
+  Widget _buildGistFeed(List<Map<String, dynamic>> gistFeedUsers) {
+    if (gistFeedUsers.isEmpty) return const SizedBox.shrink();
+    return Container(
+      height: 100,
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: lightSuedeNavy, width: 1)),
+      ),
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        itemCount: gistFeedUsers.length,
+        itemBuilder: (context, index) {
+          final user = gistFeedUsers[index];
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4.0),
+            child: GestureDetector(
+              onTap: () {
+                Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => GistViewerScreen(
+                          userId: user['id'],
+                          username: user['username'],
+                          avatarUrl: user['avatar_url'] ?? '',
+                        )));
+              },
+              child: SizedBox(
+                width: 70,
+                // THIS IS THE FIX: Wrap the Column in a SingleChildScrollView
+                // to handle any slight overflow gracefully.
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      GistAvatar(
+                        radius: 30,
+                        avatarUrl: user['avatar_url'],
+                        fallbackText: user['username']?[0].toUpperCase() ?? '?',
+                        hasActiveGist: true,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        user['username'],
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            color: Colors.white70, fontSize: 12),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            );
-            if (result == true) {
-              _loadInitialData();
-            }
-          },
-        );
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  // NEW SEARCH BAR FOR PRIVATE MODE
+  Widget _buildSearchBar() {
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: TextField(
+        controller: _searchController,
+        style: const TextStyle(color: Colors.white),
+        decoration: InputDecoration(
+          hintText: 'Search your conversations...',
+          hintStyle: const TextStyle(color: Colors.white38),
+          prefixIcon: const Icon(Icons.search, color: Colors.white70),
+          filled: true,
+          fillColor: lightSuedeNavy,
+          border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide.none),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPrivateView(List<Map<String, dynamic>> conversations,
+      List<Map<String, dynamic>> subscriptions) {
+    final Map<String, Map<String, dynamic>> subscriptionMap = {
+      for (var sub in subscriptions) sub['id']: sub
+    };
+    final Map<String, Map<String, dynamic>> conversationMap = {
+      for (var convo in conversations)
+        if (convo['other_participant_id'] != null &&
+            subscriptionMap.containsKey(convo['other_participant_id']))
+          convo['other_participant_id']: convo
+    };
+
+    final combinedList = subscriptions.map((sub) {
+      final conversationData = conversationMap[sub['id']];
+      if (conversationData != null) {
+        return conversationData..['has_active_gist'] = sub['has_active_gist'];
+      } else {
+        return {
+          'is_group': false,
+          'other_participant_id': sub['id'],
+          'other_participant_username': sub['username'],
+          'other_participant_avatar_url': sub['avatar_url'],
+          'has_active_gist': sub['has_active_gist'],
+          'last_message_at': null,
+        };
+      }
+    }).toList();
+
+    combinedList.sort((a, b) {
+      final aTime = a['last_message_at'] != null
+          ? DateTime.parse(a['last_message_at'])
+          : DateTime(1970);
+      final bTime = b['last_message_at'] != null
+          ? DateTime.parse(b['last_message_at'])
+          : DateTime(1970);
+      return bTime.compareTo(aTime);
+    });
+
+    // Filter the sorted list based on the search query
+    final filteredList = _searchQuery.isEmpty
+        ? combinedList
+        : combinedList.where((convo) {
+            final title = (convo['is_group']
+                    ? convo['group_name']
+                    : convo['other_participant_username']) as String? ??
+                '';
+            return title.toLowerCase().contains(_searchQuery.toLowerCase());
+          }).toList();
+
+    if (filteredList.isEmpty) {
+      return Center(
+        child: Text(
+          _searchQuery.isEmpty
+              ? 'Your subscribed timetables will appear here.'
+              : 'No conversations found.',
+          style: const TextStyle(color: Colors.white70),
+        ),
+      );
+    }
+
+    return ListView.builder(
+      itemCount: filteredList.length,
+      itemBuilder: (context, index) {
+        return _buildConversationTile(filteredList[index]);
       },
     );
   }
@@ -239,10 +404,12 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
 
     if (publicChats.isEmpty) {
       return const Center(
-        child: Text("Conversations with non-subscribers will appear here.",
-            style: TextStyle(color: Colors.white70)),
+        child: Text("Use the '+' button to find and chat with new users.",
+            style: TextStyle(color: Colors.white70),
+            textAlign: TextAlign.center),
       );
     }
+
     return ListView.builder(
       itemCount: publicChats.length,
       itemBuilder: (context, index) {
@@ -266,30 +433,50 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
     final otherParticipantId = isGroup ? null : convo['other_participant_id'];
     final otherParticipantUsername =
         isGroup ? null : convo['other_participant_username'];
+    final hasActiveGist = convo['has_active_gist'] as bool? ?? false;
 
     return ListTile(
-      leading: CircleAvatar(
-        backgroundColor: lightSuedeNavy,
-        backgroundImage: (avatarUrl != null && avatarUrl.isNotEmpty)
-            ? NetworkImage(avatarUrl)
-            : null,
-        child: (avatarUrl == null || avatarUrl.isEmpty)
-            ? Text(title.isNotEmpty ? title[0].toUpperCase() : '?')
-            : null,
+      leading: GestureDetector(
+        onTap: () {
+          if (hasActiveGist && otherParticipantId != null) {
+            Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => GistViewerScreen(
+                      userId: otherParticipantId,
+                      username: otherParticipantUsername ?? 'User',
+                      avatarUrl: avatarUrl ?? '',
+                    )));
+          }
+        },
+        child: GistAvatar(
+          radius: 24,
+          avatarUrl: avatarUrl,
+          hasActiveGist: hasActiveGist,
+          fallbackText: title.isNotEmpty ? title[0].toUpperCase() : '?',
+        ),
       ),
       title: Text(title,
           style: const TextStyle(
               color: Colors.white, fontWeight: FontWeight.bold)),
-      subtitle: Text('Last message...',
-          style: const TextStyle(color: Colors.white70)),
+      subtitle: Text(
+        convo['last_message_at'] != null
+            ? 'Last message...'
+            : 'Start the conversation!',
+        style: const TextStyle(color: Colors.white70),
+      ),
       trailing: Text(lastMessageTime,
           style: const TextStyle(color: Colors.white38, fontSize: 12)),
       onTap: () async {
+        final conversationId = convo['conversation_id'] ??
+            await SupabaseService.instance
+                .createOrGetConversation(otherParticipantId!);
+        if (!mounted) return;
+
         final result = await Navigator.of(context).push(
           MaterialPageRoute(
             builder: (context) => ChatScreen(
-              conversationId: convo['conversation_id'],
+              conversationId: conversationId,
               chatTitle: title,
+              isGroup: isGroup,
               otherParticipantId: otherParticipantId,
               otherParticipantUsername: otherParticipantUsername,
               otherParticipantAvatarUrl: avatarUrl,

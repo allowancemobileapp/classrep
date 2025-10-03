@@ -1,6 +1,7 @@
 // lib/features/chat/presentation/chat_screen.dart
 
 import 'dart:async';
+import 'package:class_rep/features/chat/presentation/group_details_screen.dart';
 import 'package:class_rep/shared/services/auth_service.dart';
 import 'package:class_rep/shared/services/supabase_service.dart';
 import 'package:class_rep/shared/widgets/user_profile_card.dart';
@@ -18,6 +19,7 @@ const Color lightSuedeNavy = Color(0xFF2A2C40);
 class ChatScreen extends StatefulWidget {
   final String conversationId;
   final String chatTitle;
+  final bool isGroup; // This property was missing
   final String? otherParticipantId;
   final String? otherParticipantUsername;
   final String? otherParticipantAvatarUrl;
@@ -25,6 +27,7 @@ class ChatScreen extends StatefulWidget {
   const ChatScreen({
     required this.conversationId,
     required this.chatTitle,
+    this.isGroup = false, // This now exists and has a default value
     this.otherParticipantId,
     this.otherParticipantUsername,
     this.otherParticipantAvatarUrl,
@@ -243,7 +246,8 @@ class _ChatScreenState extends State<ChatScreen> {
           await SupabaseService.instance.getMessages(widget.conversationId);
       if (mounted) {
         setState(() {
-          _messages.addAll(messages);
+          // The .reversed.toList() is the key change here
+          _messages.addAll(messages.reversed.toList());
           _isLoading = false;
         });
       }
@@ -282,7 +286,15 @@ class _ChatScreenState extends State<ChatScreen> {
           backgroundColor: lightSuedeNavy,
           title: GestureDetector(
             onTap: () {
-              if (widget.otherParticipantId != null) {
+              // This is the key logic that decides where to go
+              if (widget.isGroup) {
+                // If it's a group, go to Group Details
+                Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => GroupDetailsScreen(
+                        conversationId: widget.conversationId,
+                        groupName: widget.chatTitle)));
+              } else if (widget.otherParticipantId != null) {
+                // If it's a 1-on-1 chat, show the user profile card
                 _showUserProfile(widget.otherParticipantId!);
               }
             },
@@ -349,6 +361,7 @@ class _ChatScreenState extends State<ChatScreen> {
                           reverse: true,
                           itemCount: _messages.length,
                           itemBuilder: (context, index) {
+                            // This is now much simpler. No need to reverse the index manually.
                             final message = _messages[index];
                             final isMine = message['user_id'] == _currentUserId;
                             return _MessageBubble(
@@ -372,7 +385,7 @@ class _ChatScreenState extends State<ChatScreen> {
           children: [
             IconButton(
               icon: const Icon(Icons.add, color: Colors.cyanAccent),
-              onPressed: _showAttachmentMenu, // This is the change
+              onPressed: _showAttachmentMenu, // This is the updated line
             ),
             Expanded(
               child: TextField(
