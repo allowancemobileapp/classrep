@@ -12,7 +12,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:class_rep/shared/services/notification_service.dart';
+// import 'package:class_rep/shared/services/notification_service.dart';
 
 // --- THEME COLORS ---
 const Color darkSuedeNavy = Color(0xFF1A1B2C);
@@ -56,7 +56,7 @@ Future<void> main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  await NotificationService.instance.initialize();
+  // await NotificationService.instance.initialize();
 
   // --- ADD THIS BLOCK TO SET UP NOTIFICATION HANDLERS ---
   // Set the background messaging handler
