@@ -1,20 +1,25 @@
 // lib/features/timetable/presentation/timetable_screen.dart
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:class_rep/features/chat/presentation/conversations_screen.dart';
+import 'package:class_rep/features/profile/presentation/gist_viewer_screen.dart';
 import 'package:class_rep/features/timetable/presentation/manage_groups_screen.dart';
 import 'package:class_rep/shared/services/auth_service.dart';
+import 'package:class_rep/shared/services/notification_service.dart';
 import 'package:class_rep/shared/services/supabase_service.dart';
+import 'package:class_rep/shared/widgets/gist_avatar.dart';
 import 'package:class_rep/shared/widgets/glass_container.dart';
 import 'package:class_rep/shared/widgets/user_profile_card.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
+// THIS IS THE CRITICAL IMPORT THAT WAS MISSING
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:class_rep/shared/services/notification_service.dart';
 
 // --- THEME COLORS ---
 const Color darkSuedeNavy = Color(0xFF1A1B2C);
@@ -36,6 +41,11 @@ class _TimetableScreenState extends State<TimetableScreen> {
   List<Map<String, dynamic>> _addedTimetables = [];
   Map<String, dynamic>? _userProfile;
   int _unreadCount = 0;
+  List<Map<String, dynamic>> _gistFeedUsers = [];
+
+  // State for Unread Chat Count & Realtime
+  int _unreadChatCount = 0;
+  RealtimeChannel? _chatUpdateSubscription;
 
   @override
   void initState() {
@@ -43,6 +53,52 @@ class _TimetableScreenState extends State<TimetableScreen> {
     _selectedDay = DateTime.now();
     _currentUserId = AuthService.instance.currentUser?.id;
     _loadAllData();
+    _setupChatListener();
+  }
+
+  @override
+  void dispose() {
+    if (_chatUpdateSubscription != null) {
+      supabase.removeChannel(_chatUpdateSubscription!);
+    }
+    super.dispose();
+  }
+
+  void _setupChatListener() {
+    if (_currentUserId == null) return;
+    _chatUpdateSubscription = supabase
+        .channel('public:chat_participants:user_id=eq.$_currentUserId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'chat_participants',
+          // --- THIS IS THE FIX ---
+          // Instead of a simple string, we build the filter object it's asking for.
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'user_id',
+            value: _currentUserId,
+          ),
+          callback: (payload) {
+            _refreshUnreadChatCount();
+          },
+        )
+        .subscribe();
+  }
+
+  Future<void> _refreshUnreadChatCount() async {
+    if (_currentUserId == null) return;
+    try {
+      final count =
+          await SupabaseService.instance.getTotalUnreadConversationsCount();
+      if (mounted) {
+        setState(() {
+          _unreadChatCount = count;
+        });
+      }
+    } catch (e) {
+      // fail silently
+    }
   }
 
   Future<void> _loadAllData() async {
@@ -56,16 +112,22 @@ class _TimetableScreenState extends State<TimetableScreen> {
         SupabaseService.instance.getMySharedUsers(),
         SupabaseService.instance.fetchUserProfile(_currentUserId!),
         SupabaseService.instance.getUnreadNotificationsCount(),
+        SupabaseService.instance.getGistFeed(onlySubscriptions: false),
+        SupabaseService.instance.getTotalUnreadConversationsCount(),
       ]);
       final rawEvents = (results[0] as List).cast<Map<String, dynamic>>();
       final sharedUsers = (results[1] as List).cast<Map<String, dynamic>>();
       _userProfile = results[2] as Map<String, dynamic>;
       _unreadCount = results[3] as int;
+      final gistUsers = (results[4] as List).cast<Map<String, dynamic>>();
+      final chatCount = results[5] as int;
 
       if (!mounted) return;
       setState(() {
         _events = _groupAndExpandEvents(rawEvents);
         _addedTimetables = sharedUsers;
+        _gistFeedUsers = gistUsers;
+        _unreadChatCount = chatCount;
         _isLoading = false;
       });
     } catch (e) {
@@ -132,6 +194,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // This build method is fully updated and correct.
     return Scaffold(
       backgroundColor: darkSuedeNavy,
       appBar: AppBar(
@@ -200,12 +263,14 @@ class _TimetableScreenState extends State<TimetableScreen> {
             )
           : Column(
               children: [
+                _buildGistFeed(),
                 Padding(
                   padding: const EdgeInsets.all(16.0),
                   child: GlassContainer(
                     borderRadius: 16,
                     padding: const EdgeInsets.all(8),
                     child: TableCalendar(
+                      calendarFormat: CalendarFormat.week,
                       firstDay: DateTime.utc(2020, 1, 1),
                       lastDay: DateTime.utc(2035, 12, 31),
                       focusedDay: _focusedDay,
@@ -253,10 +318,120 @@ class _TimetableScreenState extends State<TimetableScreen> {
                 Expanded(child: _buildEventList()),
               ],
             ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _showAddEditEventModal(),
-        backgroundColor: Colors.cyanAccent,
-        child: const Icon(Icons.add, color: Colors.black),
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              FloatingActionButton.small(
+                heroTag: 'fab_chat',
+                onPressed: () async {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                        builder: (c) => const ConversationsScreen()),
+                  );
+                  _refreshUnreadChatCount();
+                },
+                backgroundColor: Colors.amber,
+                child: const Icon(CupertinoIcons.chat_bubble_2,
+                    color: Colors.black),
+              ),
+              if (_unreadChatCount > 0)
+                Positioned(
+                  top: -4,
+                  right: -4,
+                  child: Container(
+                    padding: const EdgeInsets.all(2),
+                    decoration: BoxDecoration(
+                      color: Colors.red,
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    constraints:
+                        const BoxConstraints(minWidth: 20, minHeight: 20),
+                    child: Center(
+                      child: Text(
+                        _unreadChatCount.toString(),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          FloatingActionButton(
+            heroTag: 'fab_add',
+            onPressed: () => _showAddEditEventModal(),
+            backgroundColor: Colors.cyanAccent,
+            child: const Icon(Icons.add, color: Colors.black),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // This is a brand new method. Add it directly AFTER your build method.
+  Widget _buildGistFeed() {
+    if (_gistFeedUsers.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      height: 100,
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: lightSuedeNavy, width: 1)),
+      ),
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        itemCount: _gistFeedUsers.length,
+        itemBuilder: (context, index) {
+          final user = _gistFeedUsers[index];
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4.0),
+            child: GestureDetector(
+              onTap: () {
+                Navigator.of(context).push(MaterialPageRoute(
+                    builder: (_) => GistViewerScreen(
+                          userId: user['id'],
+                          username: user['username'],
+                          avatarUrl: user['avatar_url'] ?? '',
+                        )));
+              },
+              child: SizedBox(
+                width: 70,
+                child: SingleChildScrollView(
+                  physics: const NeverScrollableScrollPhysics(),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      GistAvatar(
+                        radius: 30,
+                        avatarUrl: user['avatar_url'],
+                        fallbackText: user['username']?[0].toUpperCase() ?? '?',
+                        hasActiveGist: true,
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        user['username'],
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            color: Colors.white70, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -299,6 +474,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
   // --- HAMBURGER MENU & HELPERS ---
   // In lib/features/timetable/presentation/timetable_screen.dart
 
+  // REPLACE your existing _openHamburgerMenu method with this one:
   Future<void> _openHamburgerMenu() async {
     final creatorStats = await SupabaseService.instance.fetchCreatorStats();
     if (!mounted) return;
@@ -375,7 +551,6 @@ class _TimetableScreenState extends State<TimetableScreen> {
                       icon: const Icon(Icons.add_circle,
                           color: Colors.cyanAccent, size: 30),
                       onPressed: () async {
-                        // ... (This onPressed logic remains the same)
                         if (codeController.text.trim().isEmpty) return;
                         try {
                           await SupabaseService.instance
@@ -390,8 +565,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
                         } catch (e) {
                           final errorString = e.toString().toLowerCase();
                           if (errorString.contains('free users are limited')) {
-                            Navigator.pop(
-                                context); // Close the hamburger menu first
+                            Navigator.pop(context);
                             showDialog(
                               context: context,
                               builder: (dialogContext) => AlertDialog(
@@ -449,24 +623,6 @@ class _TimetableScreenState extends State<TimetableScreen> {
                 ),
               ),
               const Divider(color: lightSuedeNavy),
-
-              // --- THIS IS THE NEW LIST TILE ---
-              ListTile(
-                leading: const Icon(CupertinoIcons.chat_bubble_2,
-                    color: Colors.white70),
-                title: const Text('Chit Chat',
-                    style: TextStyle(color: Colors.white)),
-                onTap: () {
-                  Navigator.pop(context); // Close menu
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (c) => const ConversationsScreen()),
-                  );
-                },
-              ),
-              // --- END OF NEW LIST TILE ---
-
               ListTile(
                 leading: const Icon(Icons.group, color: Colors.white70),
                 title: const Text('Manage Groups',
@@ -484,7 +640,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
                 title: const Text('Manage Added Timetables',
                     style: TextStyle(color: Colors.white)),
                 onTap: () {
-                  Navigator.pop(context); // Close the main menu first
+                  Navigator.pop(context);
                   _showAddedTimetables();
                 },
               ),

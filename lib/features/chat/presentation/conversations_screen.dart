@@ -1,5 +1,6 @@
 // lib/features/chat/presentation/conversations_screen.dart
 
+import 'dart:async';
 import 'package:class_rep/features/chat/presentation/chat_screen.dart';
 import 'package:class_rep/features/chat/presentation/new_chat_screen.dart';
 import 'package:class_rep/features/chat/presentation/new_group_screen.dart';
@@ -10,6 +11,7 @@ import 'package:class_rep/shared/widgets/gist_avatar.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 const Color darkSuedeNavy = Color(0xFF1A1B2C);
 const Color lightSuedeNavy = Color(0xFF2A2C40);
@@ -21,7 +23,6 @@ class ConversationsScreen extends StatefulWidget {
 }
 
 class _ConversationsScreenState extends State<ConversationsScreen> {
-  // We fetch 4 distinct pieces of data
   Future<
       (
         Map<String, dynamic>,
@@ -29,14 +30,15 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
         List<Map<String, dynamic>>,
         List<Map<String, dynamic>>
       )>? _dataFuture;
-  // State for the new search bar
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+  RealtimeChannel? _realtimeSubscription;
 
   @override
   void initState() {
     super.initState();
     _loadInitialData();
+    _setupRealtimeListener();
     _searchController.addListener(() {
       setState(() {
         _searchQuery = _searchController.text;
@@ -47,13 +49,45 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
   @override
   void dispose() {
     _searchController.dispose();
+    if (_realtimeSubscription != null) {
+      supabase.removeChannel(_realtimeSubscription!);
+    }
     super.dispose();
   }
 
+  // --- THIS IS THE CORRECTED METHOD ---
+  void _setupRealtimeListener() {
+    final currentUserId = AuthService.instance.currentUser?.id;
+    if (currentUserId == null) return;
+
+    _realtimeSubscription = supabase
+        .channel('public:chat_participants:user_id=eq.$currentUserId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all, // Correct Enum for '*'
+          schema: 'public',
+          table: 'chat_participants',
+          filter: PostgresChangeFilter(
+            // Correct Filter Class
+            type: PostgresChangeFilterType.eq,
+            column: 'user_id',
+            value: currentUserId,
+          ),
+          callback: (payload) {
+            // When unread_count updates, reload all data to refresh the UI
+            if (mounted) {
+              _loadInitialData();
+            }
+          },
+        )
+        .subscribe();
+  }
+
   void _loadInitialData() {
-    setState(() {
-      _dataFuture = _fetchData();
-    });
+    if (mounted) {
+      setState(() {
+        _dataFuture = _fetchData();
+      });
+    }
   }
 
   Future<
@@ -68,10 +102,8 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
     final isPublic =
         (profile['chat_privacy'] as String? ?? 'private') == 'public';
 
-    // Fetch conversations and subscriptions in parallel
     final conversationsFuture = SupabaseService.instance.getConversations();
     final subscriptionsFuture = SupabaseService.instance.getMySharedUsers();
-    // Only fetch the full gist feed if in public mode
     final gistFeedFuture =
         SupabaseService.instance.getGistFeed(onlySubscriptions: !isPublic);
 
@@ -84,6 +116,9 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
 
     return (profile, conversations, subscriptions, gistFeedUsers);
   }
+
+  // ... (the rest of your file is exactly the same as the last version I sent)
+  // ...
 
   Future<void> _togglePrivacy(
       bool isPublic, Map<String, dynamic> userProfile) async {
@@ -169,12 +204,10 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
           ),
           body: Column(
             children: [
-              // CONDITIONALLY SHOW GIST FEED OR SEARCH BAR
               if (isPublic)
                 _buildGistFeed(gistFeedUsers)
               else
                 _buildSearchBar(),
-
               Expanded(
                 child: isPublic
                     ? _buildPublicView(allConversations, subscriptions)
@@ -272,8 +305,6 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
               },
               child: SizedBox(
                 width: 70,
-                // THIS IS THE FIX: Wrap the Column in a SingleChildScrollView
-                // to handle any slight overflow gracefully.
                 child: SingleChildScrollView(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -303,7 +334,6 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
     );
   }
 
-  // NEW SEARCH BAR FOR PRIVATE MODE
   Widget _buildSearchBar() {
     return Padding(
       padding: const EdgeInsets.all(16.0),
@@ -348,6 +378,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
           'other_participant_avatar_url': sub['avatar_url'],
           'has_active_gist': sub['has_active_gist'],
           'last_message_at': null,
+          'unread_count': 0, // Assume 0 if no conversation exists
         };
       }
     }).toList();
@@ -362,7 +393,6 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
       return bTime.compareTo(aTime);
     });
 
-    // Filter the sorted list based on the search query
     final filteredList = _searchQuery.isEmpty
         ? combinedList
         : combinedList.where((convo) {
@@ -434,6 +464,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
     final otherParticipantUsername =
         isGroup ? null : convo['other_participant_username'];
     final hasActiveGist = convo['has_active_gist'] as bool? ?? false;
+    final unreadCount = convo['unread_count'] as int? ?? 0;
 
     return ListTile(
       leading: GestureDetector(
@@ -463,8 +494,29 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
             : 'Start the conversation!',
         style: const TextStyle(color: Colors.white70),
       ),
-      trailing: Text(lastMessageTime,
-          style: const TextStyle(color: Colors.white38, fontSize: 12)),
+      trailing: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Text(lastMessageTime,
+              style: const TextStyle(color: Colors.white38, fontSize: 12)),
+          if (unreadCount > 0) ...[
+            const SizedBox(height: 4),
+            CircleAvatar(
+              radius: 10,
+              backgroundColor: Colors.cyanAccent,
+              child: Text(
+                unreadCount.toString(),
+                style: const TextStyle(
+                  color: Colors.black,
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ]
+        ],
+      ),
       onTap: () async {
         final conversationId = convo['conversation_id'] ??
             await SupabaseService.instance

@@ -889,4 +889,16 @@ class SupabaseService {
     );
     return (response as List).cast<Map<String, dynamic>>();
   }
+
+  Future<void> resetUnreadCount(String conversationId) async {
+    await supabase.rpc(
+      'reset_unread_count',
+      params: {'p_conversation_id': conversationId},
+    );
+  }
+
+  Future<int> getTotalUnreadConversationsCount() async {
+    final response = await supabase.rpc('get_total_unread_conversations_count');
+    return response as int;
+  }
 }

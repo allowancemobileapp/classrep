@@ -3,6 +3,7 @@
 import 'dart:async';
 import 'package:class_rep/shared/services/supabase_service.dart';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart'; // Import for PostgrestException
 import 'package:video_player/video_player.dart';
 import 'package:class_rep/shared/services/auth_service.dart';
 
@@ -33,11 +34,22 @@ class _GistViewerScreenState extends State<GistViewerScreen>
   int _currentIndex = 0;
   final _replyController = TextEditingController();
 
+  // State variables for subscription
+  String? _currentUserId;
+  bool? _isSubscribed;
+  bool _isProcessingSubscription = false;
+
   @override
   void initState() {
     super.initState();
     _gistsFuture = SupabaseService.instance.getGistsForUser(widget.userId);
     _pageController = PageController();
+    _currentUserId = AuthService.instance.currentUser?.id;
+
+    // Check subscription status only if viewing someone else's gist
+    if (widget.userId != _currentUserId) {
+      _checkSubscriptionStatus();
+    }
   }
 
   @override
@@ -46,6 +58,48 @@ class _GistViewerScreenState extends State<GistViewerScreen>
     _animationController?.dispose();
     _videoController?.dispose();
     super.dispose();
+  }
+
+  Future<void> _checkSubscriptionStatus() async {
+    try {
+      final status =
+          await SupabaseService.instance.isSubscribedTo(widget.userId);
+      if (mounted) {
+        setState(() => _isSubscribed = status);
+      }
+    } catch (e) {
+      // Fail silently, the button just won't appear
+    }
+  }
+
+  Future<void> _handleSubscriptionToggle() async {
+    if (_isProcessingSubscription || _isSubscribed == null) return;
+    setState(() => _isProcessingSubscription = true);
+
+    try {
+      if (_isSubscribed!) {
+        await SupabaseService.instance.unsubscribeFromTimetable(widget.userId);
+        if (mounted) setState(() => _isSubscribed = false);
+      } else {
+        await SupabaseService.instance.subscribeToTimetable(widget.username);
+        if (mounted) setState(() => _isSubscribed = true);
+      }
+    } on PostgrestException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message), backgroundColor: Colors.redAccent),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text(e.toString()), backgroundColor: Colors.redAccent),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isProcessingSubscription = false);
+    }
   }
 
   void _onPageChanged(int index, List<Map<String, dynamic>> gists) {
@@ -77,21 +131,22 @@ class _GistViewerScreenState extends State<GistViewerScreen>
       _videoController =
           VideoPlayerController.networkUrl(Uri.parse(gist['media_url']))
             ..initialize().then((_) {
-              setState(() {});
-              if (_currentIndex == _pageController!.page?.round()) {
-                _videoController!.play();
-                _animationController!.duration = _videoController!
-                    .value.duration; // Use actual video duration
-                _animationController!.forward(from: 0);
+              if (mounted) {
+                setState(() {});
+                if (_currentIndex == _pageController!.page?.round()) {
+                  _videoController!.play();
+                  _animationController!.duration =
+                      _videoController!.value.duration;
+                  _animationController!.forward(from: 0);
+                }
               }
             });
     }
   }
 
   void _nextGist() {
-    final gistsCount = _gistsFuture.then((gists) => gists.length);
-    gistsCount.then((count) {
-      if (_currentIndex + 1 < count) {
+    _gistsFuture.then((gists) {
+      if (_currentIndex + 1 < gists.length) {
         _pageController!.nextPage(
             duration: const Duration(milliseconds: 300), curve: Curves.ease);
       } else {
@@ -113,16 +168,36 @@ class _GistViewerScreenState extends State<GistViewerScreen>
     _animationController?.stop();
     _videoController?.pause();
     final double screenWidth = MediaQuery.of(context).size.width;
-    if (details.globalPosition.dx < screenWidth / 3) {
+    final double tapPosition = details.globalPosition.dx;
+
+    if (tapPosition < screenWidth / 3) {
       _previousGist();
-    } else if (details.globalPosition.dx > screenWidth * 2 / 3) {
+    } else if (tapPosition > screenWidth * 2 / 3) {
       _nextGist();
     }
+    // If tapped in the middle, we just pause. The long press up will resume.
   }
 
   Future<void> _sendReply() async {
     final content = _replyController.text.trim();
     if (content.isEmpty) return;
+
+    // --- THIS IS THE NEW LOGIC ---
+    // Get the details of the specific gist being viewed
+    final gists = await _gistsFuture;
+    final currentGist = gists[_currentIndex];
+    final gistType = currentGist['type'];
+    String gistReference;
+
+    if (gistType == 'text') {
+      gistReference =
+          '"${(currentGist['content'] as String).substring(0, (currentGist['content'] as String).length > 20 ? 20 : (currentGist['content'] as String).length)}..."';
+    } else {
+      gistReference = "your ${gistType} Gist";
+    }
+
+    final finalMessage = "[Replying to ${gistReference}]: $content";
+    // --- END OF NEW LOGIC ---
 
     _replyController.clear();
     FocusScope.of(context).unfocus(); // Dismiss keyboard
@@ -131,9 +206,9 @@ class _GistViewerScreenState extends State<GistViewerScreen>
       // Get or create a DM conversation with the Gist owner
       final conversationId =
           await SupabaseService.instance.createOrGetConversation(widget.userId);
-      // Send the reply as a direct message
+      // Send the reply as a direct message WITH the new context
       await SupabaseService.instance
-          .sendMessage(conversationId: conversationId, content: content);
+          .sendMessage(conversationId: conversationId, content: finalMessage);
 
       if (mounted)
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -157,7 +232,11 @@ class _GistViewerScreenState extends State<GistViewerScreen>
             return const Center(child: CircularProgressIndicator());
           }
           if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            Navigator.of(context).pop();
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) {
+                Navigator.of(context).pop();
+              }
+            });
             return const SizedBox.shrink();
           }
           final gists = snapshot.data!;
@@ -219,7 +298,7 @@ class _GistViewerScreenState extends State<GistViewerScreen>
                   },
                 ),
                 Positioned(
-                  top: 50, // Adjusted for safe area
+                  top: 50,
                   left: 8,
                   right: 8,
                   child: Column(
@@ -261,6 +340,37 @@ class _GistViewerScreenState extends State<GistViewerScreen>
                                   color: Colors.white,
                                   fontWeight: FontWeight.bold,
                                   shadows: [Shadow(blurRadius: 3)])),
+                          const SizedBox(width: 12),
+                          if (widget.userId != _currentUserId &&
+                              _isSubscribed != null)
+                            _isProcessingSubscription
+                                ? const SizedBox(
+                                    width: 20,
+                                    height: 20,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2, color: Colors.white))
+                                : TextButton(
+                                    onPressed: _handleSubscriptionToggle,
+                                    style: TextButton.styleFrom(
+                                        padding: EdgeInsets.zero,
+                                        minimumSize: const Size(50, 30),
+                                        tapTargetSize:
+                                            MaterialTapTargetSize.shrinkWrap,
+                                        alignment: Alignment.centerLeft),
+                                    child: Text(
+                                      _isSubscribed!
+                                          ? '• Subscribed'
+                                          : '+ Subscribe',
+                                      style: TextStyle(
+                                          color: _isSubscribed!
+                                              ? Colors.grey
+                                              : Colors.cyanAccent,
+                                          fontWeight: FontWeight.bold,
+                                          shadows: const [
+                                            Shadow(blurRadius: 3)
+                                          ]),
+                                    ),
+                                  ),
                           const Spacer(),
                           IconButton(
                               icon: const Icon(Icons.close,
@@ -272,7 +382,6 @@ class _GistViewerScreenState extends State<GistViewerScreen>
                     ],
                   ),
                 ),
-                // THIS IS THE CORRECTED LINE
                 if (widget.userId != AuthService.instance.currentUser?.id)
                   Positioned(
                     bottom: 0,

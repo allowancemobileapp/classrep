@@ -19,7 +19,7 @@ const Color lightSuedeNavy = Color(0xFF2A2C40);
 class ChatScreen extends StatefulWidget {
   final String conversationId;
   final String chatTitle;
-  final bool isGroup; // This property was missing
+  final bool isGroup;
   final String? otherParticipantId;
   final String? otherParticipantUsername;
   final String? otherParticipantAvatarUrl;
@@ -27,7 +27,7 @@ class ChatScreen extends StatefulWidget {
   const ChatScreen({
     required this.conversationId,
     required this.chatTitle,
-    this.isGroup = false, // This now exists and has a default value
+    this.isGroup = false,
     this.otherParticipantId,
     this.otherParticipantUsername,
     this.otherParticipantAvatarUrl,
@@ -45,7 +45,7 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _currentUserId;
   bool? _isSubscribed;
   bool _isSubscribing = false;
-  bool _didSubscriptionChange = false;
+  bool _didUpdateOccur = false; // Used for both subscriptions and unread counts
 
   RealtimeChannel? _messageSubscription;
 
@@ -56,6 +56,18 @@ class _ChatScreenState extends State<ChatScreen> {
     _fetchInitialMessages();
     _setupSubscription();
     _checkSubscriptionStatus();
+    _resetUnreadCount(); // --- CHANGE 1: RESET COUNT ON SCREEN ENTRY ---
+  }
+
+  // --- CHANGE 2: NEW METHOD TO RESET COUNT ---
+  Future<void> _resetUnreadCount() async {
+    try {
+      await SupabaseService.instance.resetUnreadCount(widget.conversationId);
+      _didUpdateOccur = true; // Mark that an update happened
+    } catch (e) {
+      // Fail silently, as it's not a critical error for the user
+      debugPrint("Error resetting unread count: $e");
+    }
   }
 
   @override
@@ -67,8 +79,11 @@ class _ChatScreenState extends State<ChatScreen> {
     super.dispose();
   }
 
-  void _showAttachmentMenu() {
-    showModalBottomSheet(
+  // ... (All other methods like _showAttachmentMenu, _sendMessage, etc. remain the same)
+  // ... (No changes needed for the rest of this file)
+
+  Future<void> _showAttachmentMenu() {
+    return showModalBottomSheet(
       context: context,
       backgroundColor: lightSuedeNavy,
       builder: (context) {
@@ -217,7 +232,7 @@ class _ChatScreenState extends State<ChatScreen> {
       if (mounted)
         setState(() {
           _isSubscribed = true;
-          _didSubscriptionChange = true;
+          _didUpdateOccur = true;
         });
     } finally {
       if (mounted) setState(() => _isSubscribing = false);
@@ -233,7 +248,7 @@ class _ChatScreenState extends State<ChatScreen> {
       if (mounted)
         setState(() {
           _isSubscribed = false;
-          _didSubscriptionChange = true;
+          _didUpdateOccur = true;
         });
     } finally {
       if (mounted) setState(() => _isSubscribing = false);
@@ -246,7 +261,6 @@ class _ChatScreenState extends State<ChatScreen> {
           await SupabaseService.instance.getMessages(widget.conversationId);
       if (mounted) {
         setState(() {
-          // The .reversed.toList() is the key change here
           _messages.addAll(messages.reversed.toList());
           _isLoading = false;
         });
@@ -261,7 +275,6 @@ class _ChatScreenState extends State<ChatScreen> {
       widget.conversationId,
       (newMessage) {
         if (mounted) {
-          // Check for duplicates before adding
           if (!_messages.any((msg) => msg['id'] == newMessage['id'])) {
             setState(() {
               _messages.insert(0, newMessage);
@@ -274,11 +287,13 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // --- CHANGE 3: USE POPSCOPE TO PASS RESULT BACK ---
     return PopScope(
       canPop: false,
       onPopInvoked: (didPop) {
         if (didPop) return;
-        Navigator.of(context).pop(_didSubscriptionChange);
+        Navigator.of(context)
+            .pop(_didUpdateOccur); // Pass back true if an update happened
       },
       child: Scaffold(
         backgroundColor: darkSuedeNavy,
@@ -286,15 +301,12 @@ class _ChatScreenState extends State<ChatScreen> {
           backgroundColor: lightSuedeNavy,
           title: GestureDetector(
             onTap: () {
-              // This is the key logic that decides where to go
               if (widget.isGroup) {
-                // If it's a group, go to Group Details
                 Navigator.of(context).push(MaterialPageRoute(
                     builder: (_) => GroupDetailsScreen(
                         conversationId: widget.conversationId,
                         groupName: widget.chatTitle)));
               } else if (widget.otherParticipantId != null) {
-                // If it's a 1-on-1 chat, show the user profile card
                 _showUserProfile(widget.otherParticipantId!);
               }
             },
@@ -361,7 +373,6 @@ class _ChatScreenState extends State<ChatScreen> {
                           reverse: true,
                           itemCount: _messages.length,
                           itemBuilder: (context, index) {
-                            // This is now much simpler. No need to reverse the index manually.
                             final message = _messages[index];
                             final isMine = message['user_id'] == _currentUserId;
                             return _MessageBubble(
@@ -385,7 +396,7 @@ class _ChatScreenState extends State<ChatScreen> {
           children: [
             IconButton(
               icon: const Icon(Icons.add, color: Colors.cyanAccent),
-              onPressed: _showAttachmentMenu, // This is the updated line
+              onPressed: _showAttachmentMenu,
             ),
             Expanded(
               child: TextField(
@@ -417,6 +428,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 }
 
+// ... (_MessageBubble and AttachmentSource remain the same)
 enum AttachmentSource { image, file }
 
 class _MessageBubble extends StatelessWidget {
