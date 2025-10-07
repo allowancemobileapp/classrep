@@ -901,4 +901,11 @@ class SupabaseService {
     final response = await supabase.rpc('get_total_unread_conversations_count');
     return response as int;
   }
+
+  Future<void> markMessagesAsRead(String conversationId) async {
+    await supabase.rpc(
+      'mark_messages_as_read',
+      params: {'p_conversation_id': conversationId},
+    );
+  }
 }

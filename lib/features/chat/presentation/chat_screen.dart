@@ -1,16 +1,17 @@
 // lib/features/chat/presentation/chat_screen.dart
 
 import 'dart:async';
+import 'dart:io';
 import 'package:class_rep/features/chat/presentation/group_details_screen.dart';
+import 'package:class_rep/features/chat/presentation/image_viewer_screen.dart';
 import 'package:class_rep/shared/services/auth_service.dart';
 import 'package:class_rep/shared/services/supabase_service.dart';
 import 'package:class_rep/shared/widgets/user_profile_card.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'dart:io';
-import 'package:class_rep/features/chat/presentation/image_viewer_screen.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 const Color darkSuedeNavy = Color(0xFF1A1B2C);
@@ -45,7 +46,7 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _currentUserId;
   bool? _isSubscribed;
   bool _isSubscribing = false;
-  bool _didUpdateOccur = false; // Used for both subscriptions and unread counts
+  bool _didUpdateOccur = false;
 
   RealtimeChannel? _messageSubscription;
 
@@ -56,18 +57,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _fetchInitialMessages();
     _setupSubscription();
     _checkSubscriptionStatus();
-    _resetUnreadCount(); // --- CHANGE 1: RESET COUNT ON SCREEN ENTRY ---
-  }
-
-  // --- CHANGE 2: NEW METHOD TO RESET COUNT ---
-  Future<void> _resetUnreadCount() async {
-    try {
-      await SupabaseService.instance.resetUnreadCount(widget.conversationId);
-      _didUpdateOccur = true; // Mark that an update happened
-    } catch (e) {
-      // Fail silently, as it's not a critical error for the user
-      debugPrint("Error resetting unread count: $e");
-    }
+    _markAsRead();
   }
 
   @override
@@ -79,8 +69,93 @@ class _ChatScreenState extends State<ChatScreen> {
     super.dispose();
   }
 
-  // ... (All other methods like _showAttachmentMenu, _sendMessage, etc. remain the same)
-  // ... (No changes needed for the rest of this file)
+  Future<void> _markAsRead() async {
+    try {
+      await SupabaseService.instance.markMessagesAsRead(widget.conversationId);
+      _didUpdateOccur = true;
+    } catch (e) {
+      debugPrint("Error marking messages as read: $e");
+    }
+  }
+
+  Future<void> _fetchInitialMessages() async {
+    try {
+      final messages =
+          await SupabaseService.instance.getMessages(widget.conversationId);
+      if (mounted) {
+        setState(() {
+          _messages.addAll(messages.reversed.toList());
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _setupSubscription() {
+    _messageSubscription = supabase
+        .channel(
+            'public:chat_messages:conversation_id=eq.${widget.conversationId}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'chat_messages',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'conversation_id',
+            value: widget.conversationId,
+          ),
+          callback: (payload) async {
+            final eventType = payload.eventType;
+            if (eventType == PostgresChangeEvent.insert) {
+              final newMessage = payload.newRecord;
+              if (mounted &&
+                  !_messages.any((msg) => msg['id'] == newMessage['id'])) {
+                if (newMessage['user_id'] != _currentUserId) {
+                  _markAsRead();
+                }
+                final authorProfile = await SupabaseService.instance
+                    .fetchUserProfile(newMessage['user_id']);
+                newMessage['author'] = authorProfile;
+                if (mounted) setState(() => _messages.insert(0, newMessage));
+              }
+            } else if (eventType == PostgresChangeEvent.update) {
+              final updatedMessage = payload.newRecord;
+              final index = _messages
+                  .indexWhere((msg) => msg['id'] == updatedMessage['id']);
+              if (index != -1 && mounted) {
+                final author = _messages[index]['author'];
+                setState(() {
+                  _messages[index] = updatedMessage;
+                  _messages[index]['author'] = author;
+                });
+              }
+            }
+          },
+        )
+        .subscribe();
+  }
+
+  bool _isSameDay(DateTime date1, DateTime date2) {
+    return date1.year == date2.year &&
+        date1.month == date2.month &&
+        date1.day == date2.day;
+  }
+
+  String _formatDateSeparator(DateTime date) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final yesterday = DateTime(now.year, now.month, now.day - 1);
+
+    if (_isSameDay(date, today)) {
+      return 'Today';
+    } else if (_isSameDay(date, yesterday)) {
+      return 'Yesterday';
+    } else {
+      return DateFormat.yMMMd().format(date); // e.g., "Oct 7, 2025"
+    }
+  }
 
   Future<void> _showAttachmentMenu() {
     return showModalBottomSheet(
@@ -119,8 +194,8 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _handleFileUpload(AttachmentSource source) async {
     List<int>? fileBytes;
     String? fileName;
-    String attachmentType = 'file'; // Default to file
-    const maxSizeInBytes = 45 * 1024 * 1024; // 45MB
+    String attachmentType = 'file';
+    const maxSizeInBytes = 45 * 1024 * 1024;
 
     if (source == AttachmentSource.image) {
       final picker = ImagePicker();
@@ -150,9 +225,10 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     final tempMessageId = DateTime.now().millisecondsSinceEpoch.toString();
-    if (mounted)
+    if (mounted) {
       setState(() => _messages.insert(0,
           {'id': tempMessageId, 'is_temp': true, 'user_id': _currentUserId}));
+    }
 
     try {
       await SupabaseService.instance.uploadChatAttachment(
@@ -163,14 +239,16 @@ class _ChatScreenState extends State<ChatScreen> {
         attachmentType: attachmentType,
       );
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content: Text(e.toString().split(': ').last),
             backgroundColor: Colors.red));
+      }
     } finally {
-      if (mounted)
+      if (mounted) {
         setState(
             () => _messages.removeWhere((msg) => msg['id'] == tempMessageId));
+      }
     }
   }
 
@@ -229,11 +307,12 @@ class _ChatScreenState extends State<ChatScreen> {
     try {
       await SupabaseService.instance
           .subscribeToTimetable(widget.otherParticipantUsername!);
-      if (mounted)
+      if (mounted) {
         setState(() {
           _isSubscribed = true;
           _didUpdateOccur = true;
         });
+      }
     } finally {
       if (mounted) setState(() => _isSubscribing = false);
     }
@@ -245,55 +324,24 @@ class _ChatScreenState extends State<ChatScreen> {
     try {
       await SupabaseService.instance
           .unsubscribeFromTimetable(widget.otherParticipantId!);
-      if (mounted)
+      if (mounted) {
         setState(() {
           _isSubscribed = false;
           _didUpdateOccur = true;
         });
+      }
     } finally {
       if (mounted) setState(() => _isSubscribing = false);
     }
   }
 
-  Future<void> _fetchInitialMessages() async {
-    try {
-      final messages =
-          await SupabaseService.instance.getMessages(widget.conversationId);
-      if (mounted) {
-        setState(() {
-          _messages.addAll(messages.reversed.toList());
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  void _setupSubscription() {
-    _messageSubscription = SupabaseService.instance.subscribeToMessages(
-      widget.conversationId,
-      (newMessage) {
-        if (mounted) {
-          if (!_messages.any((msg) => msg['id'] == newMessage['id'])) {
-            setState(() {
-              _messages.insert(0, newMessage);
-            });
-          }
-        }
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    // --- CHANGE 3: USE POPSCOPE TO PASS RESULT BACK ---
     return PopScope(
       canPop: false,
       onPopInvoked: (didPop) {
         if (didPop) return;
-        Navigator.of(context)
-            .pop(_didUpdateOccur); // Pass back true if an update happened
+        Navigator.of(context).pop(_didUpdateOccur);
       },
       child: Scaffold(
         backgroundColor: darkSuedeNavy,
@@ -375,8 +423,52 @@ class _ChatScreenState extends State<ChatScreen> {
                           itemBuilder: (context, index) {
                             final message = _messages[index];
                             final isMine = message['user_id'] == _currentUserId;
-                            return _MessageBubble(
-                                message: message, isMine: isMine);
+
+                            bool showDateSeparator = false;
+                            final messageDate =
+                                DateTime.parse(message['created_at']).toLocal();
+
+                            if (index == _messages.length - 1) {
+                              showDateSeparator = true;
+                            } else {
+                              final previousMessage = _messages[index + 1];
+                              final previousMessageDate =
+                                  DateTime.parse(previousMessage['created_at'])
+                                      .toLocal();
+                              if (!_isSameDay(
+                                  messageDate, previousMessageDate)) {
+                                showDateSeparator = true;
+                              }
+                            }
+
+                            return Column(
+                              children: [
+                                _MessageBubble(
+                                    message: message, isMine: isMine),
+                                if (showDateSeparator)
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                        vertical: 16.0),
+                                    child: Center(
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 12, vertical: 6),
+                                        decoration: BoxDecoration(
+                                          color: lightSuedeNavy,
+                                          borderRadius:
+                                              BorderRadius.circular(12),
+                                        ),
+                                        child: Text(
+                                          _formatDateSeparator(messageDate),
+                                          style: const TextStyle(
+                                              color: Colors.white70,
+                                              fontSize: 12),
+                                        ),
+                                      ),
+                                    ),
+                                  )
+                              ],
+                            );
                           },
                         ),
             ),
@@ -428,7 +520,6 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 }
 
-// ... (_MessageBubble and AttachmentSource remain the same)
 enum AttachmentSource { image, file }
 
 class _MessageBubble extends StatelessWidget {
@@ -444,6 +535,9 @@ class _MessageBubble extends StatelessWidget {
     final attachmentType = message['attachment_type'] as String?;
     final fileName = message['file_name'] as String?;
     final content = message['content'] as String?;
+    final createdAt = DateTime.parse(message['created_at']).toLocal();
+    final readAt =
+        message['read_at'] != null ? DateTime.parse(message['read_at']) : null;
 
     if (message['is_temp'] == true) {
       return Align(
@@ -514,7 +608,7 @@ class _MessageBubble extends StatelessWidget {
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
         margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 14),
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
         decoration: BoxDecoration(
             color: isMine ? Colors.cyanAccent : lightSuedeNavy,
             borderRadius: BorderRadius.circular(16)),
@@ -535,9 +629,33 @@ class _MessageBubble extends StatelessWidget {
               Padding(
                 padding: EdgeInsets.only(top: attachmentUrl != null ? 4.0 : 0),
                 child: Text(content,
-                    style:
-                        TextStyle(color: isMine ? Colors.black : Colors.white)),
+                    style: TextStyle(
+                        color: isMine ? Colors.black : Colors.white,
+                        fontSize: 16)),
               ),
+            const SizedBox(height: 4),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  DateFormat.jm().format(createdAt),
+                  style: TextStyle(
+                    color: isMine ? Colors.black54 : Colors.white54,
+                    fontSize: 10,
+                  ),
+                ),
+                if (isMine) ...[
+                  const SizedBox(width: 4),
+                  Icon(
+                    readAt != null ? Icons.done_all : Icons.done,
+                    size: 14,
+                    color: readAt != null
+                        ? Colors.blue.shade700
+                        : (isMine ? Colors.black54 : Colors.white54),
+                  ),
+                ],
+              ],
+            ),
           ],
         ),
       ),
