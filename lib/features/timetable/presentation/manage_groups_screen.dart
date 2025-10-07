@@ -83,25 +83,53 @@ class _ManageGroupsScreenState extends State<ManageGroupsScreen> {
   }
 
   Future<void> _deleteGroup(String groupId) async {
-    // ... This method remains exactly the same
-    final confirm = await showDialog<bool>(
+    final confirm = await showModalBottomSheet<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        backgroundColor: darkSuedeNavy,
-        title: const Text('Confirm Deletion',
-            style: TextStyle(color: Colors.white)),
-        content: const Text(
-            'Are you sure you want to delete this group? All events within it will become ungrouped.',
-            style: TextStyle(color: Colors.white70)),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('Cancel')),
-          TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('Delete',
-                  style: TextStyle(color: Colors.redAccent))),
-        ],
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => GlassContainer(
+        borderRadius: 20,
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Confirm Deletion',
+              style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Are you sure you want to delete this group? All events within it will become ungrouped.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white70, fontSize: 16),
+            ),
+            const SizedBox(height: 24),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                TextButton(
+                  child: const Text('Cancel',
+                      style: TextStyle(color: Colors.white70, fontSize: 16)),
+                  onPressed: () => Navigator.of(sheetContext).pop(false),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.redAccent,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                        vertical: 12, horizontal: 32),
+                  ),
+                  child: const Text('Delete',
+                      style:
+                          TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  onPressed: () => Navigator.of(sheetContext).pop(true),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
 

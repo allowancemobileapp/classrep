@@ -760,7 +760,6 @@ class _TimetableScreenState extends State<TimetableScreen> {
   }
 
   Widget _buildImageEventCard(Map<String, dynamic> event) {
-    // ... This function remains unchanged ...
     final startTime =
         DateFormat.jm().format(DateTime.parse(event['start_time']).toLocal());
     final title = event['title'] as String? ?? 'No Title';
@@ -794,7 +793,8 @@ class _TimetableScreenState extends State<TimetableScreen> {
       child: InkWell(
         onTap: isMine ? () => _showAddEditEventModal(event: event) : null,
         child: AspectRatio(
-          aspectRatio: 16 / 9,
+          // --- STYLE CHANGE: ASPECT RATIO IS NOW 1/1 (SQUARE) ---
+          aspectRatio: 1 / 1,
           child: Stack(
             fit: StackFit.expand,
             children: [
@@ -805,15 +805,16 @@ class _TimetableScreenState extends State<TimetableScreen> {
                       child: const Center(child: Icon(Icons.broken_image)))),
               Container(
                 decoration: BoxDecoration(
+                  // --- STYLE CHANGE: GRADIENT FADES FROM THE BOTTOM ONLY ---
                   gradient: LinearGradient(
                     colors: [
-                      Colors.black.withOpacity(0.8),
                       Colors.transparent,
-                      Colors.black.withOpacity(0.8)
+                      Colors.black.withOpacity(0.8),
+                      Colors.black
                     ],
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    stops: const [0.0, 0.5, 1.0],
+                    stops: const [0.4, 0.8, 1.0], // Start fade lower down
                   ),
                 ),
               ),
@@ -1112,51 +1113,81 @@ class _TimetableScreenState extends State<TimetableScreen> {
   }
 
   Future<void> _handleSendReminder(String eventId) async {
-    final confirm = await showDialog<bool>(
+    final confirm = await showModalBottomSheet<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: darkSuedeNavy,
-        title:
-            const Text('Send Reminder?', style: TextStyle(color: Colors.white)),
-        content: const Text(
-            'This will send a notification to all of your subscribers about this event.',
-            style: TextStyle(color: Colors.white70)),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.of(ctx).pop(false),
-              child: const Text('Cancel')),
-          TextButton(
-              onPressed: () => Navigator.of(ctx).pop(true),
-              child: const Text('Send',
-                  style: TextStyle(color: Colors.cyanAccent))),
-        ],
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => GlassContainer(
+        borderRadius: 20,
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Send Reminder?',
+              style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'This will send a push notification to all of your subscribers about this event.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white70, fontSize: 16),
+            ),
+            const SizedBox(height: 24),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                TextButton(
+                  child: const Text('Cancel',
+                      style: TextStyle(color: Colors.white70, fontSize: 16)),
+                  onPressed: () => Navigator.of(sheetContext).pop(false),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.cyanAccent,
+                    foregroundColor: Colors.black,
+                    padding: const EdgeInsets.symmetric(
+                        vertical: 12, horizontal: 32),
+                  ),
+                  child: const Text('Send',
+                      style:
+                          TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  onPressed: () => Navigator.of(sheetContext).pop(true),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
 
-    if (confirm != true) return;
-
-    try {
-      await SupabaseService.instance.sendEventReminder(eventId);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('Reminder sent to all subscribers!'),
-              backgroundColor: Colors.green),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text('Error: ${e.toString()}'),
-              backgroundColor: Colors.red),
-        );
+    if (confirm == true) {
+      try {
+        await SupabaseService.instance.sendEventReminder(eventId);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text('Reminder sent to all subscribers!'),
+                backgroundColor: Colors.green),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+                content: Text('Error: ${e.toString()}'),
+                backgroundColor: Colors.red),
+          );
+        }
       }
     }
   }
 
   Future<void> _openCommentsSheet(
-      String eventId, String eventTitle, Map event) async {
+      String eventId, String eventTitle, Map<String, dynamic> event) async {
+    // Changed 'Map event' to 'Map<String, dynamic> event' for type safety
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -1165,8 +1196,11 @@ class _TimetableScreenState extends State<TimetableScreen> {
         return _CommentsSheet(
           eventId: eventId,
           eventTitle: eventTitle,
+          // --- NEW ---
+          // We now pass the event creator's details and the description
+          eventCreator: event['author'] as Map<String, dynamic>?,
+          eventDescription: event['description'] as String?,
           onCommentPosted: () {
-            // This callback refreshes the main event list to update the comment count badge.
             _loadAllData();
           },
         );
@@ -1235,52 +1269,96 @@ class _TimetableScreenState extends State<TimetableScreen> {
                             fontSize: 24,
                             fontWeight: FontWeight.bold)),
                     const SizedBox(height: 24),
-                    GestureDetector(
-                      onTap: () async {
-                        final picker = ImagePicker();
-                        final file =
-                            await picker.pickImage(source: ImageSource.gallery);
-                        if (file != null) {
-                          setModalState(() => pickedImage = file);
-                        }
-                      },
-                      child: AspectRatio(
-                        aspectRatio: 16 / 9,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: Colors.white38, width: 2),
-                            image: pickedImage != null
-                                ? DecorationImage(
-                                    image: FileImage(File(pickedImage!.path)),
-                                    fit: BoxFit.cover)
-                                : existingImageUrl != null
+
+                    // --- THIS IS THE UPDATED IMAGE PREVIEW WIDGET ---
+                    Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        GestureDetector(
+                          onTap: () async {
+                            final picker = ImagePicker();
+                            final file = await picker.pickImage(
+                                source: ImageSource.gallery);
+                            if (file != null) {
+                              setModalState(() {
+                                pickedImage = file;
+                                // If a new image is picked, it replaces any existing one
+                                existingImageUrl = null;
+                              });
+                            }
+                          },
+                          child: AspectRatio(
+                            aspectRatio: 16 / 9,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(16),
+                                border:
+                                    Border.all(color: Colors.white38, width: 2),
+                                image: pickedImage != null
                                     ? DecorationImage(
-                                        image: NetworkImage(existingImageUrl),
+                                        image:
+                                            FileImage(File(pickedImage!.path)),
                                         fit: BoxFit.cover)
-                                    : null,
-                          ),
-                          child: (pickedImage == null &&
-                                  existingImageUrl == null)
-                              ? const Center(
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(CupertinoIcons.photo_on_rectangle,
-                                          color: Colors.white38, size: 40),
-                                      SizedBox(height: 8),
-                                      Text('Tap to add an image',
-                                          style: TextStyle(
+                                    : existingImageUrl != null
+                                        ? DecorationImage(
+                                            image:
+                                                NetworkImage(existingImageUrl!),
+                                            fit: BoxFit.cover)
+                                        : null,
+                              ),
+                              child: (pickedImage == null &&
+                                      existingImageUrl == null)
+                                  ? const Center(
+                                      child: Column(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        children: [
+                                          Icon(
+                                              CupertinoIcons.photo_on_rectangle,
                                               color: Colors.white38,
-                                              fontSize: 14)),
-                                    ],
-                                  ),
-                                )
-                              : null,
+                                              size: 40),
+                                          SizedBox(height: 8),
+                                          Text('Tap to add an image',
+                                              style: TextStyle(
+                                                  color: Colors.white38,
+                                                  fontSize: 14)),
+                                        ],
+                                      ),
+                                    )
+                                  : null,
+                            ),
+                          ),
                         ),
-                      ),
+                        // --- THIS IS THE NEW "REMOVE IMAGE" BUTTON ---
+                        if (pickedImage != null || existingImageUrl != null)
+                          Positioned(
+                            top: 8,
+                            right: 8,
+                            child: GestureDetector(
+                              onTap: () {
+                                setModalState(() {
+                                  pickedImage = null;
+                                  existingImageUrl = null;
+                                });
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: const BoxDecoration(
+                                  color: Colors.black54,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.close,
+                                  color: Colors.white,
+                                  size: 20,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
                     ),
                     const SizedBox(height: 24),
+
                     TextFormField(
                         controller: titleController,
                         style: const TextStyle(color: Colors.white),
@@ -1364,7 +1442,6 @@ class _TimetableScreenState extends State<TimetableScreen> {
                       ),
                       onPressed: () async {
                         if (formKey.currentState!.validate()) {
-                          // The selected date from the calendar might be different from today
                           final day = isEditing
                               ? DateTime.parse(event['start_time']).toLocal()
                               : _selectedDay!;
@@ -1396,7 +1473,8 @@ class _TimetableScreenState extends State<TimetableScreen> {
                                 startTime: startDateTime,
                                 endTime: endDateTime,
                                 groupId: selectedGroupId,
-                                imageUrl: finalImageUrl,
+                                imageUrl:
+                                    finalImageUrl, // Will be null if removed
                                 linkUrl: linkUrlController.text,
                                 repeat: repeatValue,
                               );
@@ -1413,9 +1491,6 @@ class _TimetableScreenState extends State<TimetableScreen> {
                               );
                             }
 
-                            // --- THIS IS THE NEW LOGIC ---
-                            // We create a unique ID from the event title and time.
-                            // This ensures that if we edit the event, we are updating the same notification.
                             final notificationId =
                                 (titleController.text.hashCode +
                                         startDateTime.millisecondsSinceEpoch)
@@ -1428,7 +1503,6 @@ class _TimetableScreenState extends State<TimetableScreen> {
                               body: 'Your event is starting now!',
                               scheduledTime: startDateTime,
                             );
-                            // --- END OF NEW LOGIC ---
 
                             if (!mounted) return;
                             Navigator.of(context).pop();
@@ -1456,34 +1530,67 @@ class _TimetableScreenState extends State<TimetableScreen> {
                         padding: const EdgeInsets.only(top: 8.0),
                         child: TextButton.icon(
                           onPressed: () async {
-                            final confirm = await showDialog<bool>(
+                            final confirm = await showModalBottomSheet<bool>(
                               context: context,
-                              builder: (dialogContext) => AlertDialog(
-                                backgroundColor: darkSuedeNavy,
-                                title: const Text('Confirm Deletion',
-                                    style: TextStyle(color: Colors.white)),
-                                content: const Text(
-                                    'Are you sure you want to delete this event series?',
-                                    style: TextStyle(color: Colors.white70)),
-                                actions: [
-                                  TextButton(
-                                      onPressed: () =>
-                                          Navigator.of(dialogContext)
-                                              .pop(false),
-                                      child: const Text('Cancel')),
-                                  TextButton(
-                                      onPressed: () =>
-                                          Navigator.of(dialogContext).pop(true),
-                                      child: const Text('Delete',
-                                          style: TextStyle(
-                                              color: Colors.redAccent))),
-                                ],
+                              backgroundColor: Colors.transparent,
+                              builder: (sheetContext) => GlassContainer(
+                                borderRadius: 20,
+                                padding: const EdgeInsets.all(24.0),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Text(
+                                      'Confirm Deletion',
+                                      style: TextStyle(
+                                          fontSize: 22,
+                                          fontWeight: FontWeight.bold,
+                                          color: Colors.white),
+                                    ),
+                                    const SizedBox(height: 16),
+                                    const Text(
+                                      'Are you sure you want to delete this event series? This action cannot be undone.',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                          color: Colors.white70, fontSize: 16),
+                                    ),
+                                    const SizedBox(height: 24),
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceEvenly,
+                                      children: [
+                                        TextButton(
+                                          child: const Text('Cancel',
+                                              style: TextStyle(
+                                                  color: Colors.white70,
+                                                  fontSize: 16)),
+                                          onPressed: () =>
+                                              Navigator.of(sheetContext)
+                                                  .pop(false),
+                                        ),
+                                        ElevatedButton(
+                                          style: ElevatedButton.styleFrom(
+                                            backgroundColor: Colors.redAccent,
+                                            foregroundColor: Colors.white,
+                                            padding: const EdgeInsets.symmetric(
+                                                vertical: 12, horizontal: 32),
+                                          ),
+                                          child: const Text('Delete',
+                                              style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 16)),
+                                          onPressed: () =>
+                                              Navigator.of(sheetContext)
+                                                  .pop(true),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ),
                               ),
                             );
+
                             if (confirm == true) {
                               try {
-                                // --- THIS IS THE NEW LOGIC ---
-                                // Also cancel the notification when deleting the event
                                 final notificationId =
                                     (event['title'].hashCode +
                                             DateTime.parse(event['start_time'])
@@ -1491,10 +1598,10 @@ class _TimetableScreenState extends State<TimetableScreen> {
                                         .remainder(2147483647);
                                 await NotificationService.instance
                                     .cancelNotification(notificationId);
-                                // --- END OF NEW LOGIC ---
 
                                 if (!mounted) return;
-                                Navigator.of(context).pop();
+                                Navigator.of(context)
+                                    .pop(); // Close the edit modal
                                 await SupabaseService.instance
                                     .deleteEvent(event['id']);
                                 await _loadAllData();
@@ -1549,11 +1656,15 @@ class _TimetableScreenState extends State<TimetableScreen> {
 class _CommentsSheet extends StatefulWidget {
   final String eventId;
   final String eventTitle;
+  final String? eventDescription; // New parameter
+  final Map<String, dynamic>? eventCreator; // New parameter
   final VoidCallback onCommentPosted;
 
   const _CommentsSheet(
       {required this.eventId,
       required this.eventTitle,
+      this.eventDescription,
+      this.eventCreator,
       required this.onCommentPosted});
 
   @override
@@ -1565,7 +1676,6 @@ class _CommentsSheetState extends State<_CommentsSheet> {
   final TextEditingController _commentController = TextEditingController();
   bool _isPosting = false;
 
-  // State for replying
   String? _replyingToCommentId;
   String? _replyingToUsername;
 
@@ -1636,7 +1746,6 @@ class _CommentsSheetState extends State<_CommentsSheet> {
       builder: (context, scrollController) {
         return GlassContainer(
           borderRadius: 20.0,
-          // FIX #1: Added the missing 'padding' argument
           padding: EdgeInsets.only(
             top: 12,
             left: 12,
@@ -1645,7 +1754,6 @@ class _CommentsSheetState extends State<_CommentsSheet> {
           ),
           child: Column(
             children: [
-              // Drag handle
               Center(
                 child: Container(
                   width: 40,
@@ -1657,7 +1765,6 @@ class _CommentsSheetState extends State<_CommentsSheet> {
                   ),
                 ),
               ),
-              // Header
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 8.0),
                 child: Row(
@@ -1697,25 +1804,49 @@ class _CommentsSheetState extends State<_CommentsSheet> {
                               style: const TextStyle(color: Colors.red)));
                     }
                     final flatComments = snapshot.data ?? [];
-                    if (flatComments.isEmpty) {
+                    final commentsTree = _buildCommentTree(flatComments);
+
+                    final hasDescription = widget.eventDescription != null &&
+                        widget.eventDescription!.isNotEmpty;
+
+                    if (!hasDescription && commentsTree.isEmpty) {
                       return const Center(
                           child: Text('No comments yet. Be the first!',
                               style: TextStyle(color: Colors.white70)));
                     }
 
-                    // FIX #2: Moved _buildCommentTree logic inside the builder to use the fetched data
-                    final commentsTree = _buildCommentTree(flatComments);
-
-                    return ListView.separated(
+                    return ListView.builder(
                       controller: scrollController,
-                      itemCount: commentsTree.length,
-                      separatorBuilder: (context, index) =>
-                          const Divider(color: lightSuedeNavy, height: 24),
-                      itemBuilder: (ctx, idx) {
-                        return CommentWidget(
-                          commentData: commentsTree[idx],
-                          onReply: _setReplyTo,
-                          onDeleted: _refreshComments,
+                      itemCount: commentsTree.length + (hasDescription ? 1 : 0),
+                      itemBuilder: (ctx, index) {
+                        // If there is a description, show it as the first item
+                        if (hasDescription && index == 0) {
+                          return Padding(
+                            padding: const EdgeInsets.fromLTRB(8, 8, 8, 24),
+                            child: ListTile(
+                              leading: const Icon(Icons.info_outline,
+                                  color: Colors.white70),
+                              title: Text(
+                                widget.eventDescription!,
+                                style: const TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 15,
+                                    fontStyle: FontStyle.italic),
+                              ),
+                            ),
+                          );
+                        }
+
+                        // Adjust index for the actual comments
+                        final commentIndex = hasDescription ? index - 1 : index;
+
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8.0),
+                          child: CommentWidget(
+                            commentData: commentsTree[commentIndex],
+                            onReply: _setReplyTo,
+                            onDeleted: _refreshComments,
+                          ),
                         );
                       },
                     );
