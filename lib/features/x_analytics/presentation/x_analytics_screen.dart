@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:class_rep/shared/services/auth_service.dart';
 import 'package:class_rep/shared/services/supabase_service.dart';
 import 'package:class_rep/shared/widgets/glass_container.dart';
-import 'package:url_launcher/url_launcher.dart'; // 1. Add this import
+import 'package:url_launcher/url_launcher.dart';
 
 // --- THEME COLORS ---
 const Color darkSuedeNavy = Color(0xFF1A1B2C);
@@ -23,9 +23,6 @@ class _XAnalyticsScreenState extends State<XAnalyticsScreen> {
   Map<String, dynamic> _creatorStats = {};
   Map<String, dynamic>? _userProfile;
   bool _isProcessingPayment = false;
-  // final String _paystackPlanCode = 'PLN_eomdf3mz9sjg4m3';
-
-  // --- NEW STATE VARIABLE FOR BETTER UX ---
   bool _cancellationIsPending = false;
 
   @override
@@ -35,14 +32,20 @@ class _XAnalyticsScreenState extends State<XAnalyticsScreen> {
   }
 
   Future<void> _loadData() async {
-    setState(() => _isLoading = true);
+    // Only show the full-screen loader on the very first load.
+    if (!mounted || _isLoading) {
+      // Allow initial load to proceed
+    } else {
+      // This is a refresh, don't show the full screen loader,
+      // the RefreshIndicator shows its own spinner.
+    }
+
     final userId = AuthService.instance.currentUser?.id;
     if (userId == null) {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
       return;
     }
     try {
-      // We now also check for a pending cancellation request
       final profileFuture = SupabaseService.instance.fetchUserProfile(userId);
       final statsFuture = SupabaseService.instance.fetchCreatorStats();
       final pendingCancellationFuture =
@@ -104,8 +107,38 @@ class _XAnalyticsScreenState extends State<XAnalyticsScreen> {
                 child: CircularProgressIndicator(color: Colors.cyanAccent))
             : TabBarView(
                 children: [
-                  _buildEarningsTab(),
-                  _buildSubscriptionTab(),
+                  // --- THIS IS THE CORRECTED STRUCTURE ---
+                  RefreshIndicator(
+                    onRefresh: _loadData,
+                    color: Colors.black,
+                    backgroundColor: Colors.cyanAccent,
+                    child: LayoutBuilder(builder: (context, constraints) {
+                      // We use a ListView to ensure the scroll physics work correctly with RefreshIndicator
+                      return SingleChildScrollView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        child: ConstrainedBox(
+                          constraints:
+                              BoxConstraints(minHeight: constraints.maxHeight),
+                          child: _buildEarningsTab(),
+                        ),
+                      );
+                    }),
+                  ),
+                  RefreshIndicator(
+                    onRefresh: _loadData,
+                    color: Colors.black,
+                    backgroundColor: Colors.cyanAccent,
+                    child: LayoutBuilder(builder: (context, constraints) {
+                      return SingleChildScrollView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        child: ConstrainedBox(
+                          constraints:
+                              BoxConstraints(minHeight: constraints.maxHeight),
+                          child: _buildSubscriptionTab(),
+                        ),
+                      );
+                    }),
+                  ),
                 ],
               ),
       ),
@@ -113,9 +146,10 @@ class _XAnalyticsScreenState extends State<XAnalyticsScreen> {
   }
 
   Widget _buildSubscriptionTab() {
-    return SingleChildScrollView(
+    return Padding(
       padding: const EdgeInsets.all(16.0),
       child: GlassContainer(
+        // ... rest of the widget is the same
         padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -160,7 +194,6 @@ class _XAnalyticsScreenState extends State<XAnalyticsScreen> {
                 onPressed: _isProcessingPayment ? null : _handleUpgrade,
               )
             else
-              // --- NEW UI LOGIC FOR CANCELLATION ---
               _cancellationIsPending
                   ? const Chip(
                       backgroundColor: Colors.amber,
@@ -320,17 +353,14 @@ class _XAnalyticsScreenState extends State<XAnalyticsScreen> {
     final totalEarned = _creatorStats['total_earned'] as num? ?? 0;
     final progressToNextPayout = (plusAddons % 100) / 100.0;
     final isEligibleForPayout = balance >= 1000;
-
-    // --- NEW: Calculate the percentage of Plus subscribers ---
     final double plusPercentage =
         totalSubscribers > 0 ? plusAddons / totalSubscribers : 0.0;
 
-    return SingleChildScrollView(
+    return Padding(
       padding: const EdgeInsets.all(16.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // --- UPDATED SUBSCRIBER BREAKDOWN WIDGET ---
           GlassContainer(
             padding: const EdgeInsets.all(16.0),
             child: Column(
@@ -385,8 +415,6 @@ class _XAnalyticsScreenState extends State<XAnalyticsScreen> {
               ],
             ),
           ),
-          // --- END OF UPDATED WIDGET ---
-
           const SizedBox(height: 16),
           GlassContainer(
             padding: const EdgeInsets.all(16.0),
@@ -437,7 +465,7 @@ class _XAnalyticsScreenState extends State<XAnalyticsScreen> {
             ),
             onPressed: isEligibleForPayout
                 ? () async {
-                    // Payout logic remains the same
+                    // Payout logic
                   }
                 : null,
           ),
