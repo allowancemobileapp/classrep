@@ -47,12 +47,12 @@ class _ChatScreenState extends State<ChatScreen> {
   bool? _isSubscribed;
   bool _isSubscribing = false;
   bool _didUpdateOccur = false;
-
   RealtimeChannel? _messageSubscription;
 
   @override
   void initState() {
     super.initState();
+    print(">>> CHAT SCREEN: initState()");
     _currentUserId = AuthService.instance.currentUser?.id;
     _fetchInitialMessages();
     _setupSubscription();
@@ -62,6 +62,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
+    print(">>> CHAT SCREEN: dispose()");
     if (_messageSubscription != null) {
       supabase.removeChannel(_messageSubscription!);
     }
@@ -70,11 +71,14 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _markAsRead() async {
+    print(">>> CHAT SCREEN: Attempting to mark messages as read...");
     try {
       await SupabaseService.instance.markMessagesAsRead(widget.conversationId);
+      print(
+          ">>> CHAT SCREEN: Successfully called the reset function in database.");
       _didUpdateOccur = true;
     } catch (e) {
-      debugPrint("Error marking messages as read: $e");
+      print(">>> CHAT SCREEN: ERROR marking messages as read: $e");
     }
   }
 
@@ -135,26 +139,6 @@ class _ChatScreenState extends State<ChatScreen> {
           },
         )
         .subscribe();
-  }
-
-  bool _isSameDay(DateTime date1, DateTime date2) {
-    return date1.year == date2.year &&
-        date1.month == date2.month &&
-        date1.day == date2.day;
-  }
-
-  String _formatDateSeparator(DateTime date) {
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final yesterday = DateTime(now.year, now.month, now.day - 1);
-
-    if (_isSameDay(date, today)) {
-      return 'Today';
-    } else if (_isSameDay(date, yesterday)) {
-      return 'Yesterday';
-    } else {
-      return DateFormat.yMMMd().format(date); // e.g., "Oct 7, 2025"
-    }
   }
 
   Future<void> _showAttachmentMenu() {
@@ -332,6 +316,26 @@ class _ChatScreenState extends State<ChatScreen> {
       }
     } finally {
       if (mounted) setState(() => _isSubscribing = false);
+    }
+  }
+
+  bool _isSameDay(DateTime date1, DateTime date2) {
+    return date1.year == date2.year &&
+        date1.month == date2.month &&
+        date1.day == date2.day;
+  }
+
+  String _formatDateSeparator(DateTime date) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final yesterday = DateTime(now.year, now.month, now.day - 1);
+
+    if (_isSameDay(date, today)) {
+      return 'Today';
+    } else if (_isSameDay(date, yesterday)) {
+      return 'Yesterday';
+    } else {
+      return DateFormat.yMMMd().format(date); // e.g., "Oct 7, 2025"
     }
   }
 
@@ -519,6 +523,8 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 }
+
+// ... rest of the file
 
 enum AttachmentSource { image, file }
 

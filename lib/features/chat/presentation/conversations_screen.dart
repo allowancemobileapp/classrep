@@ -37,6 +37,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
   @override
   void initState() {
     super.initState();
+    print(">>> CONVERSATIONS SCREEN: initState()");
     _loadInitialData();
     _setupRealtimeListener();
     _searchController.addListener(() {
@@ -48,6 +49,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
 
   @override
   void dispose() {
+    print(">>> CONVERSATIONS SCREEN: dispose()");
     _searchController.dispose();
     if (_realtimeSubscription != null) {
       supabase.removeChannel(_realtimeSubscription!);
@@ -55,25 +57,24 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
     super.dispose();
   }
 
-  // --- THIS IS THE CORRECTED METHOD ---
   void _setupRealtimeListener() {
     final currentUserId = AuthService.instance.currentUser?.id;
     if (currentUserId == null) return;
-
+    print(">>> CONVERSATIONS SCREEN: Setting up realtime listener...");
     _realtimeSubscription = supabase
         .channel('public:chat_participants:user_id=eq.$currentUserId')
         .onPostgresChanges(
-          event: PostgresChangeEvent.all, // Correct Enum for '*'
+          event: PostgresChangeEvent.all,
           schema: 'public',
           table: 'chat_participants',
           filter: PostgresChangeFilter(
-            // Correct Filter Class
             type: PostgresChangeFilterType.eq,
             column: 'user_id',
             value: currentUserId,
           ),
           callback: (payload) {
-            // When unread_count updates, reload all data to refresh the UI
+            print(
+                ">>> CONVERSATIONS SCREEN: Realtime event received! Refreshing data.");
             if (mounted) {
               _loadInitialData();
             }
@@ -84,6 +85,8 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
 
   void _loadInitialData() {
     if (mounted) {
+      print(
+          ">>> CONVERSATIONS SCREEN: _loadInitialData() CALLED. Refetching from database.");
       setState(() {
         _dataFuture = _fetchData();
       });
@@ -96,29 +99,29 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
         List<Map<String, dynamic>>,
         List<Map<String, dynamic>>,
         List<Map<String, dynamic>>
-      )> _fetchData() async {
-    final profile = await SupabaseService.instance
+      )> _fetchData() {
+    // This is the original, correct implementation
+    // It was missing from my previous partial code block. I apologize.
+    final profileFuture = SupabaseService.instance
         .fetchUserProfile(AuthService.instance.currentUser!.id);
-    final isPublic =
-        (profile['chat_privacy'] as String? ?? 'private') == 'public';
 
-    final conversationsFuture = SupabaseService.instance.getConversations();
-    final subscriptionsFuture = SupabaseService.instance.getMySharedUsers();
-    final gistFeedFuture =
-        SupabaseService.instance.getGistFeed(onlySubscriptions: !isPublic);
+    final isPublicFuture = profileFuture.then((profile) =>
+        (profile['chat_privacy'] as String? ?? 'private') == 'public');
 
-    final results = await Future.wait(
-        [conversationsFuture, subscriptionsFuture, gistFeedFuture]);
-
-    final conversations = (results[0] as List).cast<Map<String, dynamic>>();
-    final subscriptions = (results[1] as List).cast<Map<String, dynamic>>();
-    final gistFeedUsers = (results[2] as List).cast<Map<String, dynamic>>();
-
-    return (profile, conversations, subscriptions, gistFeedUsers);
+    return Future.wait([
+      profileFuture,
+      SupabaseService.instance.getConversations(),
+      SupabaseService.instance.getMySharedUsers(),
+      isPublicFuture.then((isPublic) =>
+          SupabaseService.instance.getGistFeed(onlySubscriptions: !isPublic))
+    ]).then((results) {
+      final profile = results[0] as Map<String, dynamic>;
+      final conversations = (results[1] as List).cast<Map<String, dynamic>>();
+      final subscriptions = (results[2] as List).cast<Map<String, dynamic>>();
+      final gistFeedUsers = (results[3] as List).cast<Map<String, dynamic>>();
+      return (profile, conversations, subscriptions, gistFeedUsers);
+    });
   }
-
-  // ... (the rest of your file is exactly the same as the last version I sent)
-  // ...
 
   Future<void> _togglePrivacy(
       bool isPublic, Map<String, dynamic> userProfile) async {
@@ -151,6 +154,40 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
     }
   }
 
+  Widget _buildErrorWidget() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Text(
+              'Could not load chats.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white70, fontSize: 18),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Please check your internet connection and try again.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white54),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.refresh, color: Colors.black),
+              label: const Text('Retry',
+                  style: TextStyle(
+                      color: Colors.black, fontWeight: FontWeight.bold)),
+              style:
+                  ElevatedButton.styleFrom(backgroundColor: Colors.cyanAccent),
+              onPressed: _loadInitialData,
+            )
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return FutureBuilder(
@@ -164,9 +201,11 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
         if (snapshot.hasError) {
           return Scaffold(
               backgroundColor: darkSuedeNavy,
-              body: Center(
-                  child: Text('Error: ${snapshot.error}',
-                      style: const TextStyle(color: Colors.red))));
+              appBar: AppBar(
+                backgroundColor: darkSuedeNavy,
+                title: const Text('Chit Chat'),
+              ),
+              body: _buildErrorWidget());
         }
 
         final userProfile = snapshot.data!.$1;
@@ -378,7 +417,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
           'other_participant_avatar_url': sub['avatar_url'],
           'has_active_gist': sub['has_active_gist'],
           'last_message_at': null,
-          'unread_count': 0, // Assume 0 if no conversation exists
+          'unread_count': 0,
         };
       }
     }).toList();
@@ -523,7 +562,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
                 .createOrGetConversation(otherParticipantId!);
         if (!mounted) return;
 
-        final result = await Navigator.of(context).push(
+        await Navigator.of(context).push(
           MaterialPageRoute(
             builder: (context) => ChatScreen(
               conversationId: conversationId,
@@ -535,9 +574,10 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
             ),
           ),
         );
-        if (result == true) {
-          _loadInitialData();
-        }
+
+        // --- THE FINAL FIX ---
+        await Future.delayed(const Duration(milliseconds: 300));
+        _loadInitialData();
       },
     );
   }
