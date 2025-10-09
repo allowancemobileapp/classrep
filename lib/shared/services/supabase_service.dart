@@ -618,21 +618,69 @@ class SupabaseService {
     required String content,
     String? attachmentUrl,
     String? attachmentType,
-    String? fileName, // NEW
+    String? fileName,
   }) async {
     final userId = AuthService.instance.currentUser?.id;
     if (userId == null) throw Exception('User not logged in');
 
     if (content.trim().isEmpty && attachmentUrl == null) return;
 
+    // Step 1: Insert the message into the database
     await supabase.from('chat_messages').insert({
       'conversation_id': conversationId,
       'user_id': userId,
       'content': content,
       'attachment_url': attachmentUrl,
       'attachment_type': attachmentType,
-      'file_name': fileName, // NEW
+      'file_name': fileName,
     });
+
+    // Step 2: Get the current user's username for the notification title
+    final currentUserProfile = await fetchUserProfile(userId);
+    final senderUsername =
+        currentUserProfile['username'] as String? ?? 'Someone';
+
+    // Step 3: Get all other participants in the chat
+    final participantsResponse = await supabase
+        .from('chat_participants')
+        .select('user_id')
+        .eq('conversation_id', conversationId);
+
+    final List<dynamic> participants = participantsResponse;
+    final recipientIds = participants
+        .where((p) => p['user_id'] != userId)
+        .map((p) => p['user_id'] as String)
+        .toList();
+
+    // Step 4: Send a push notification to each recipient
+    if (recipientIds.isNotEmpty) {
+      final title = 'New Message from @$senderUsername';
+      // Create a short preview for the notification body
+      final body = content.isNotEmpty
+          ? (content.trim().length > 50
+              ? '${content.trim().substring(0, 50)}...'
+              : content.trim())
+          : 'Sent an attachment';
+
+      // Create a list of futures to send all notifications in parallel
+      final List<Future> pushFutures = [];
+      for (final recipientId in recipientIds) {
+        pushFutures.add(() async {
+          try {
+            await supabase.functions.invoke('send-push-notification', body: {
+              'userId': recipientId,
+              'title': title,
+              'body': body,
+            });
+          } catch (e) {
+            // Log errors without stopping the loop
+            debugPrint('Push notification send error for $recipientId: $e');
+          }
+        }());
+      }
+      // Wait for all notifications to be sent
+      await Future.wait(pushFutures);
+    }
   }
 
   // This sets up the real-time subscription
