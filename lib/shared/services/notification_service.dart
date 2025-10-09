@@ -3,6 +3,8 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
+import 'dart:convert'; // For jsonDecode if needed for payload
+import 'package:flutter/foundation.dart'; // For debugPrint
 
 class NotificationService {
   NotificationService._();
@@ -10,6 +12,9 @@ class NotificationService {
 
   final FlutterLocalNotificationsPlugin _notificationsPlugin =
       FlutterLocalNotificationsPlugin();
+
+  // Static callback for handling notification taps (set this from your app's main or router)
+  static Function(Map<String, dynamic>)? onNotificationTap;
 
   Future<void> initialize() async {
     // Initialize timezone data
@@ -29,7 +34,28 @@ class NotificationService {
       iOS: initializationSettingsIOS,
     );
 
-    await _notificationsPlugin.initialize(initializationSettings);
+    // ADD THIS: Handle notification taps (for both local and push)
+    await _notificationsPlugin.initialize(
+      initializationSettings,
+      onDidReceiveNotificationResponse: (NotificationResponse response) async {
+        // Parse payload (from push data or local payload)
+        final String? payloadString = response.payload;
+        if (payloadString != null) {
+          try {
+            final Map<String, dynamic> payload = jsonDecode(payloadString);
+            // Call your static callback (set this in main.dart or router)
+            onNotificationTap?.call(payload);
+            // Example: If payload has 'screen': '/chat', navigate
+            // Get.toNamed(payload['screen']); // If using GetX
+            // Or: navigatorKey.currentState?.pushNamed(payload['screen']); // If using GlobalKey<NavigatorState>
+          } catch (e) {
+            debugPrint('Error parsing notification payload: $e');
+            // Fallback: Open main screen
+            // navigatorKey.currentState?.pushNamed('/main');
+          }
+        }
+      },
+    );
 
     // Request permissions for Android 13+
     final AndroidFlutterLocalNotificationsPlugin? androidImplementation =
@@ -104,14 +130,19 @@ class NotificationService {
       iOS: iosDetails,
     );
 
-    // The '0' is a static ID for the notification. You could use a random number
-    // or a hash of the message ID for more complex scenarios.
+    // UPDATED: Use jsonEncode for better payload handling on tap
+    final String? payloadString = payload != null ? jsonEncode(payload) : null;
+
+    // Use a unique ID (e.g., based on timestamp) to avoid overwriting
+    final int notificationId =
+        DateTime.now().millisecondsSinceEpoch.remainder(100000);
+
     await _notificationsPlugin.show(
-      0,
+      notificationId,
       title,
       body,
       details,
-      payload: payload?.toString(),
+      payload: payloadString,
     );
   }
 }
