@@ -83,4 +83,35 @@ class NotificationService {
   Future<void> cancelNotification(int id) async {
     await _notificationsPlugin.cancel(id);
   }
+
+  Future<void> showPushNotification({
+    required String title,
+    required String body,
+    Map<String, dynamic>? payload,
+  }) async {
+    const AndroidNotificationDetails androidDetails =
+        AndroidNotificationDetails(
+      'push_channel', // A unique ID for the channel
+      'Push Notifications',
+      channelDescription: 'Notifications from Class Rep',
+      importance: Importance.max,
+      priority: Priority.high,
+      icon: '@drawable/notification_icon', // The safe icon we created
+    );
+    const DarwinNotificationDetails iosDetails = DarwinNotificationDetails();
+    const NotificationDetails details = NotificationDetails(
+      android: androidDetails,
+      iOS: iosDetails,
+    );
+
+    // The '0' is a static ID for the notification. You could use a random number
+    // or a hash of the message ID for more complex scenarios.
+    await _notificationsPlugin.show(
+      0,
+      title,
+      body,
+      details,
+      payload: payload?.toString(),
+    );
+  }
 }

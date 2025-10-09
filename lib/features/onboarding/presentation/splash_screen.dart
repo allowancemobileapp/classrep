@@ -3,6 +3,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:class_rep/shared/services/auth_service.dart';
+import 'package:class_rep/shared/services/supabase_service.dart'; // NEW IMPORT for initFcm
 import 'package:class_rep/features/home/presentation/main_screen.dart';
 import 'package:class_rep/features/onboarding/presentation/welcome_screen.dart';
 
@@ -35,6 +36,11 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   void _navigateToNextScreen() {
+    // NEW: Initialize FCM token handling if user is logged in (post-auth)
+    if (_isLoggedIn) {
+      SupabaseService.instance.initFcm();
+    }
+
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
         builder: (context) =>

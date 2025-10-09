@@ -1,29 +1,62 @@
 // lib/main.dart
 
 import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_messaging/firebase_messaging.dart'; // Add this import
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart'; // For background handler
 import 'firebase_options.dart';
 
 import 'package:class_rep/features/home/presentation/main_screen.dart';
 import 'package:class_rep/features/onboarding/presentation/splash_screen.dart';
 import 'package:class_rep/features/timetable/presentation/timetable_screen.dart';
 import 'package:class_rep/shared/services/auth_service.dart';
+import 'package:class_rep/shared/services/notification_service.dart'; // For showing push notifications
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:class_rep/shared/services/notification_service.dart';
 
 // --- THEME COLORS ---
 const Color darkSuedeNavy = Color(0xFF1A1B2C);
 const Color lightSuedeNavy = Color(0xFF2A2C40);
 
-// --- ADD THIS FUNCTION (Must be a top-level function) ---
+// --- BACKGROUND HANDLER (Updated icon to match your notification_service) ---
 // This handles notifications when the app is in the background or terminated.
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  debugPrint("Handling a background message: ${message.messageId}");
+
+  // Initialize local notifications for background (must be done in isolate)
+  final notifications = FlutterLocalNotificationsPlugin();
+  const AndroidInitializationSettings androidInit =
+      AndroidInitializationSettings('@drawable/notification_icon');
+  const DarwinInitializationSettings iosInit = DarwinInitializationSettings();
+  const InitializationSettings initSettings =
+      InitializationSettings(android: androidInit, iOS: iosInit);
+  await notifications.initialize(initSettings);
+
+  // Show the notification
+  const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+    'push_channel',
+    'Push Notifications',
+    channelDescription: 'Notifications from Class Rep',
+    importance: Importance.max,
+    priority: Priority.high,
+    icon: '@drawable/notification_icon',
+  );
+  const DarwinNotificationDetails iosDetails = DarwinNotificationDetails();
+  const NotificationDetails details = NotificationDetails(
+    android: androidDetails,
+    iOS: iosDetails,
+  );
+
+  await notifications.show(
+    0,
+    message.notification?.title ?? 'Class Rep',
+    message.notification?.body ?? '',
+    details,
+  );
+
+  debugPrint('Background message handled: ${message.messageId}');
 }
 // ---------------------------------------------------------
 
@@ -58,19 +91,69 @@ Future<void> main() async {
 
   await NotificationService.instance.initialize();
 
-  // --- ADD THIS BLOCK TO SET UP NOTIFICATION HANDLERS ---
+  // --- REQUEST PERMISSION & GET TOKEN (Fixed: Use Supabase auth state change) ---
+  // Request permission
+  NotificationSettings settings =
+      await FirebaseMessaging.instance.requestPermission(
+    alert: true,
+    badge: true,
+    sound: true,
+    provisional: false,
+    announcement: false,
+    carPlay: false,
+  );
+
+  if (settings.authorizationStatus == AuthorizationStatus.authorized) {
+    debugPrint('User granted permission');
+  } else {
+    debugPrint('User declined/denied permission');
+  }
+
+  // Get initial token
+  // await FirebaseMessaging.instance.getToken();
+
+  // Listen to Supabase auth changes to store token on sign-in
+  supabase.auth.onAuthStateChange.listen((data) async {
+    if (data.event == AuthChangeEvent.signedIn) {
+      String? currentToken = await FirebaseMessaging.instance.getToken();
+      if (currentToken != null && data.session?.user.id != null) {
+        await supabase.from('users').update({'fcm_token': currentToken}).eq(
+            'id', data.session!.user.id);
+        debugPrint('FCM token stored for user: ${data.session!.user.id}');
+      }
+    }
+  });
+
+  // Listen for token refresh (using Supabase currentUser)
+  FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
+    final user = supabase.auth.currentUser;
+    if (user != null) {
+      await supabase
+          .from('users')
+          .update({'fcm_token': newToken}).eq('id', user.id);
+      debugPrint('FCM token refreshed and stored: $newToken');
+    }
+  });
+  // ----------------------------------------------------
+
+  // --- SET UP NOTIFICATION HANDLERS (Updated for foreground display) ---
   // Set the background messaging handler
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
   // Listen for incoming messages when the app is in the foreground
-  FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+  FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
     debugPrint('Got a message whilst in the foreground!');
     debugPrint('Message data: ${message.data}');
 
     if (message.notification != null) {
       debugPrint(
           'Message also contained a notification: ${message.notification}');
-      // Here you could show an in-app dialog or a snackbar.
+      // Show as local notification
+      await NotificationService.instance.showPushNotification(
+        title: message.notification!.title ?? 'Class Rep',
+        body: message.notification!.body ?? '',
+        payload: message.data,
+      );
     }
   });
   // ----------------------------------------------------

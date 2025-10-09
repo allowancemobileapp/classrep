@@ -318,18 +318,28 @@ class SupabaseService {
     required String? twitterHandle,
     String? avatarUrl,
     String? usdtWalletAddress,
+    String? fcmToken, // ADD THIS NEW PARAMETER
   }) async {
     final userId = AuthService.instance.currentUser?.id;
     if (userId == null) throw Exception('User not logged in');
 
-    await supabase.from('users').update({
+    final updates = {
       'display_name': displayName,
       'username': username,
       'bio': bio,
       'twitter_handle': twitterHandle,
-      'avatar_url': avatarUrl,
       'usdt_wallet_address': usdtWalletAddress,
-    }).eq('id', userId);
+    };
+
+    if (avatarUrl != null) {
+      updates['avatar_url'] = avatarUrl;
+    }
+    // ADD THIS LOGIC
+    if (fcmToken != null) {
+      updates['fcm_token'] = fcmToken;
+    }
+
+    await supabase.from('users').update(updates).eq('id', userId);
   }
 
   Future<List<Map<String, dynamic>>> fetchNotifications() async {
@@ -922,5 +932,54 @@ class SupabaseService {
 
   Future<void> incrementGistView(String gistId) async {
     await supabase.rpc('increment_gist_view', params: {'p_gist_id': gistId});
+  }
+
+  Future<void> initFcm() async {
+    final messaging = FirebaseMessaging.instance;
+
+    // Request Permission
+    final settings = await messaging.requestPermission(
+      alert: true,
+      badge: true,
+      sound: true,
+      provisional: false,
+    );
+
+    if (settings.authorizationStatus == AuthorizationStatus.authorized) {
+      debugPrint('User granted push notification permission');
+    } else {
+      debugPrint(
+          'User declined or has not accepted push notification permission');
+      return;
+    }
+
+    // Get and Save Token (use Supabase user directly)
+    String? fcmToken = await messaging.getToken();
+    final user = supabase.auth.currentUser;
+    if (fcmToken != null && user != null) {
+      try {
+        await supabase
+            .from('users')
+            .update({'fcm_token': fcmToken}).eq('id', user.id);
+        debugPrint('FCM token saved successfully: $fcmToken');
+      } catch (e) {
+        debugPrint('Error saving FCM token: $e');
+      }
+    }
+
+    // Token Refresh Listener
+    messaging.onTokenRefresh.listen((newToken) async {
+      final currentUser = supabase.auth.currentUser;
+      if (currentUser != null) {
+        try {
+          await supabase
+              .from('users')
+              .update({'fcm_token': newToken}).eq('id', currentUser.id);
+          debugPrint('FCM token refreshed and stored: $newToken');
+        } catch (e) {
+          debugPrint('Error storing refreshed FCM token: $e');
+        }
+      }
+    });
   }
 }

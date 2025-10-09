@@ -1,4 +1,4 @@
-// lib/features/home/presentation/main_screen.dart (or wherever your MainScreen is located)
+// lib/features/home/presentation/main_screen.dart
 
 import 'package:flutter/material.dart';
 import 'package:class_rep/features/timetable/presentation/timetable_screen.dart';
@@ -26,9 +26,9 @@ class _MainScreenState extends State<MainScreen> {
     super.initState();
     _loadUserProfile();
 
-    // --- THIS IS THE NEW LINE ---
-    // Get and save the user's notification token on startup
-    SupabaseService.instance.initNotifications();
+    // UPDATED: Changed from initNotifications() to initFcm() for FCM token handling
+    // (This is a fallback call; primary call is in SplashScreen for post-login timing)
+    SupabaseService.instance.initFcm();
   }
 
   void navigateToTab(int index) {
