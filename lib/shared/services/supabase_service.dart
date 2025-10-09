@@ -849,22 +849,21 @@ class SupabaseService {
     required String type,
     String? content,
     String? mediaUrl,
+    String? caption, // New parameter
   }) async {
     final userId = AuthService.instance.currentUser?.id;
     if (userId == null) throw Exception('User not logged in');
 
-    // First, check if the user is allowed to post.
     await supabase.rpc('check_and_increment_gist_count');
 
-    // Second, insert the new gist.
     await supabase.from('gists').insert({
       'user_id': userId,
       'type': type,
       'content': content,
       'media_url': mediaUrl,
+      'caption': caption, // Add caption to the insert
     });
 
-    // FINALLY, call the new function to set the user's status to true.
     await supabase.rpc('set_user_active_gist_status');
   }
 
@@ -907,5 +906,21 @@ class SupabaseService {
       'reset_unread_count',
       params: {'p_conversation_id': conversationId},
     );
+  }
+
+  Future<void> deleteGist(String gistId) async {
+    await supabase.from('gists').delete().eq('id', gistId);
+  }
+
+  Future<void> likeGist(String gistId) async {
+    await supabase.rpc('like_gist', params: {'p_gist_id': gistId});
+  }
+
+  Future<void> unlikeGist(String gistId) async {
+    await supabase.rpc('unlike_gist', params: {'p_gist_id': gistId});
+  }
+
+  Future<void> incrementGistView(String gistId) async {
+    await supabase.rpc('increment_gist_view', params: {'p_gist_id': gistId});
   }
 }

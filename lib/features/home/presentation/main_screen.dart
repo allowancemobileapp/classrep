@@ -31,6 +31,10 @@ class _MainScreenState extends State<MainScreen> {
     SupabaseService.instance.initNotifications();
   }
 
+  void navigateToTab(int index) {
+    _onItemTapped(index);
+  }
+
   Future<void> _loadUserProfile() async {
     final userId = AuthService.instance.currentUser?.id;
     if (userId == null) return;
@@ -46,11 +50,12 @@ class _MainScreenState extends State<MainScreen> {
     }
   }
 
-  static const List<Widget> _widgetOptions = <Widget>[
-    TimetableScreen(),
-    XAnalyticsScreen(),
-    ProfileScreen(),
-  ];
+  List<Widget> get _widgetOptions => <Widget>[
+        TimetableScreen(
+            onNavigateToTab: navigateToTab), // Pass the function here
+        const XAnalyticsScreen(),
+        const ProfileScreen(),
+      ];
 
   void _onItemTapped(int index) {
     setState(() {

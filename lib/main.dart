@@ -117,7 +117,12 @@ class ClassRepApp extends StatelessWidget {
       ),
       routes: {
         '/main': (context) => const MainScreen(),
-        '/timetable': (context) => const TimetableScreen(),
+        '/timetable': (context) => TimetableScreen(
+              onNavigateToTab: (int tabIndex) {
+                // Implement navigation logic here, e.g.:
+                // Navigator.of(context).pushReplacementNamed('/main', arguments: tabIndex);
+              },
+            ),
       },
       home: StreamBuilder<AuthState>(
         stream: AuthService.instance.authStateChanges,

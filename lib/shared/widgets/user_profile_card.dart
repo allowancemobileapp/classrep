@@ -94,6 +94,7 @@ class _UserProfileCardState extends State<UserProfileCard> {
     final bio = widget.userProfile['bio'] as String?;
     final isCurrentUser =
         widget.userProfile['id'] == AuthService.instance.currentUser?.id;
+    final isPlusUser = widget.userProfile['is_plus'] as bool? ?? false;
 
     return GlassContainer(
       borderRadius: 20,
@@ -114,13 +115,27 @@ class _UserProfileCardState extends State<UserProfileCard> {
                 : null,
           ),
           const SizedBox(height: 16),
-          Text(
-            displayName,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                displayName,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              if (isPlusUser) ...[
+                const SizedBox(width: 8),
+                const Icon(
+                  Icons.verified,
+                  color: Colors.cyanAccent,
+                  size: 20,
+                ),
+              ]
+            ],
           ),
           const SizedBox(height: 4),
           Text(

@@ -17,8 +17,9 @@ class CreateGistScreen extends StatefulWidget {
 }
 
 class _CreateGistScreenState extends State<CreateGistScreen> {
-  String _gistType = 'text'; // 'text', 'image', or 'video'
+  String _gistType = 'text';
   final _textController = TextEditingController();
+  final _captionController = TextEditingController();
   XFile? _mediaFile;
   VideoPlayerController? _videoController;
   bool _isUploading = false;
@@ -26,6 +27,7 @@ class _CreateGistScreenState extends State<CreateGistScreen> {
   @override
   void dispose() {
     _textController.dispose();
+    _captionController.dispose();
     _videoController?.dispose();
     super.dispose();
   }
@@ -34,11 +36,11 @@ class _CreateGistScreenState extends State<CreateGistScreen> {
     final picker = ImagePicker();
     final file = await picker.pickImage(source: ImageSource.gallery);
     if (file != null) {
+      _videoController?.dispose();
+      _videoController = null;
       setState(() {
         _mediaFile = file;
         _gistType = 'image';
-        _videoController?.dispose();
-        _videoController = null;
       });
     }
   }
@@ -48,14 +50,17 @@ class _CreateGistScreenState extends State<CreateGistScreen> {
     final file = await picker.pickVideo(
         source: ImageSource.gallery, maxDuration: const Duration(seconds: 30));
     if (file != null) {
+      _videoController?.dispose();
       _videoController = VideoPlayerController.file(File(file.path))
         ..initialize().then((_) {
-          setState(() {
-            _mediaFile = file;
-            _gistType = 'video';
-          });
-          _videoController?.play();
-          _videoController?.setLooping(true);
+          if (mounted) {
+            setState(() {
+              _mediaFile = file;
+              _gistType = 'video';
+            });
+            _videoController?.play();
+            _videoController?.setLooping(true);
+          }
         });
     }
   }
@@ -79,14 +84,16 @@ class _CreateGistScreenState extends State<CreateGistScreen> {
         await SupabaseService.instance.createGist(
           type: _gistType,
           mediaUrl: mediaUrl,
+          caption: _captionController.text.trim(),
         );
       }
       if (mounted) Navigator.of(context).pop();
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content: Text(e.toString().split(': ').last),
             backgroundColor: Colors.red));
+      }
     } finally {
       if (mounted) setState(() => _isUploading = false);
     }
@@ -115,10 +122,42 @@ class _CreateGistScreenState extends State<CreateGistScreen> {
       body: Column(
         children: [
           Expanded(
-            child: Container(
-              color: Colors.black,
-              width: double.infinity,
-              child: _buildPreview(),
+            child: GestureDetector(
+              onTap: () => FocusScope.of(context).unfocus(),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Container(
+                    color: Colors.black,
+                    width: double.infinity,
+                    child: _buildPreview(),
+                  ),
+                  if (_gistType != 'text')
+                    Positioned(
+                      bottom: 20,
+                      left: 20,
+                      right: 20,
+                      child: TextField(
+                        controller: _captionController,
+                        textAlign: TextAlign.center,
+                        maxLength: 50,
+                        maxLines: null,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          shadows: [Shadow(blurRadius: 4, color: Colors.black)],
+                        ),
+                        decoration: InputDecoration(
+                          hintText: 'Add a caption...',
+                          hintStyle:
+                              TextStyle(color: Colors.white.withOpacity(0.7)),
+                          border: InputBorder.none,
+                          counterText: '',
+                        ),
+                      ),
+                    ),
+                ],
+              ),
             ),
           ),
           Container(
@@ -168,9 +207,11 @@ class _CreateGistScreenState extends State<CreateGistScreen> {
     if (_gistType == 'video' &&
         _videoController != null &&
         _videoController!.value.isInitialized) {
-      return AspectRatio(
-        aspectRatio: _videoController!.value.aspectRatio,
-        child: VideoPlayer(_videoController!),
+      return Center(
+        child: AspectRatio(
+          aspectRatio: _videoController!.value.aspectRatio,
+          child: VideoPlayer(_videoController!),
+        ),
       );
     }
     // Default to text input

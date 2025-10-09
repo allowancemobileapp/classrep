@@ -3,6 +3,7 @@
 import 'dart:async';
 import 'package:class_rep/features/chat/presentation/chat_screen.dart';
 import 'package:class_rep/shared/services/supabase_service.dart';
+import 'package:class_rep/shared/widgets/gist_avatar.dart';
 import 'package:class_rep/shared/widgets/glass_container.dart';
 import 'package:flutter/material.dart';
 
@@ -18,18 +19,16 @@ class NewChatScreen extends StatefulWidget {
 
 class _NewChatScreenState extends State<NewChatScreen> {
   final _searchController = TextEditingController();
-  final _scrollController = ScrollController(); // For infinite scroll
+  final _scrollController = ScrollController();
 
   List<Map<String, dynamic>> _searchResults = [];
   List<Map<String, dynamic>> _suggestedUsers = [];
   Timer? _debounce;
 
-  // State for suggestions pagination
   int _currentPage = 1;
   bool _isLoadingSuggestions = true;
   bool _isLoadingMore = false;
   bool _hasMore = true;
-
   bool _isSearching = false;
 
   @override
@@ -37,7 +36,7 @@ class _NewChatScreenState extends State<NewChatScreen> {
     super.initState();
     _searchController.addListener(_onSearchChanged);
     _scrollController.addListener(_onScroll);
-    _loadInitialSuggestions(); // Renamed for clarity
+    _loadInitialSuggestions();
   }
 
   Future<void> _loadInitialSuggestions() async {
@@ -88,7 +87,6 @@ class _NewChatScreenState extends State<NewChatScreen> {
   }
 
   void _onScroll() {
-    // Load more when user is 200 pixels from the bottom
     if (_scrollController.position.pixels >=
         _scrollController.position.maxScrollExtent - 200) {
       _loadMoreSuggestions();
@@ -218,7 +216,7 @@ class _NewChatScreenState extends State<NewChatScreen> {
         ),
         Expanded(
           child: GridView.builder(
-            controller: _scrollController, // Attach the scroll controller
+            controller: _scrollController,
             padding: const EdgeInsets.all(16),
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 2,
@@ -258,15 +256,25 @@ class _NewChatScreenState extends State<NewChatScreen> {
         final user = _searchResults[index];
         final avatarUrl = user['avatar_url'] as String?;
         final username = user['username'] ?? '...';
+        final isPlus = user['is_plus'] as bool? ?? false;
+        final hasGist = user['has_active_gist'] as bool? ?? false;
+
         return ListTile(
-          leading: CircleAvatar(
-            backgroundColor: lightSuedeNavy,
-            backgroundImage: avatarUrl != null ? NetworkImage(avatarUrl) : null,
-            child: avatarUrl == null
-                ? Text(username.isNotEmpty ? username[0].toUpperCase() : '?')
-                : null,
+          leading: GistAvatar(
+            avatarUrl: avatarUrl,
+            fallbackText: username.isNotEmpty ? username[0].toUpperCase() : '?',
+            hasActiveGist: hasGist,
+            radius: 24,
           ),
-          title: Text(username, style: const TextStyle(color: Colors.white)),
+          title: Row(
+            children: [
+              Text(username, style: const TextStyle(color: Colors.white)),
+              if (isPlus) ...[
+                const SizedBox(width: 8),
+                const Icon(Icons.verified, color: Colors.cyanAccent, size: 16),
+              ]
+            ],
+          ),
           onTap: () => _startChatWithUser(user),
         );
       },
@@ -286,6 +294,8 @@ class _SuggestedUserCard extends StatelessWidget {
     final displayName = userProfile['display_name'] as String? ?? 'No Name';
     final username = userProfile['username'] as String? ?? '...';
     final bio = userProfile['bio'] as String?;
+    final isPlus = userProfile['is_plus'] as bool? ?? false;
+    final hasGist = userProfile['has_active_gist'] as bool? ?? false;
 
     return GestureDetector(
       onTap: onTap,
@@ -294,30 +304,36 @@ class _SuggestedUserCard extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            CircleAvatar(
+            GistAvatar(
               radius: 35,
-              backgroundColor: darkSuedeNavy,
-              backgroundImage:
-                  avatarUrl != null ? NetworkImage(avatarUrl) : null,
-              child: avatarUrl == null
-                  ? Text(
-                      displayName.isNotEmpty
-                          ? displayName[0].toUpperCase()
-                          : '?',
-                      style: const TextStyle(fontSize: 30, color: Colors.white),
-                    )
-                  : null,
+              avatarUrl: avatarUrl,
+              hasActiveGist: hasGist,
+              fallbackText:
+                  displayName.isNotEmpty ? displayName[0].toUpperCase() : '?',
             ),
             const SizedBox(height: 12),
-            Text(
-              displayName,
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Text(
+                    displayName,
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16),
+                  ),
+                ),
+                if (isPlus) ...[
+                  const SizedBox(width: 6),
+                  const Icon(Icons.verified,
+                      color: Colors.cyanAccent, size: 16),
+                ]
+              ],
             ),
             Text(
               '@$username',

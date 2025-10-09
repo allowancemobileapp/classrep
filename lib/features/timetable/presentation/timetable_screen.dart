@@ -26,7 +26,8 @@ const Color darkSuedeNavy = Color(0xFF1A1B2C);
 const Color lightSuedeNavy = Color(0xFF2A2C40);
 
 class TimetableScreen extends StatefulWidget {
-  const TimetableScreen({super.key});
+  final Function(int) onNavigateToTab; // Add this parameter
+  const TimetableScreen({required this.onNavigateToTab, super.key});
 
   @override
   State<TimetableScreen> createState() => _TimetableScreenState();
@@ -381,6 +382,13 @@ class _TimetableScreenState extends State<TimetableScreen> {
   Widget _buildGistFeed() {
     if (_gistFeedUsers.isEmpty) return const SizedBox.shrink();
 
+    final isPlusUser = _userProfile?['is_plus'] as bool? ?? false;
+    final int gistLimit = 10;
+    final bool hasMoreGists = _gistFeedUsers.length > gistLimit;
+    final List<Map<String, dynamic>> visibleGists = isPlusUser || !hasMoreGists
+        ? _gistFeedUsers
+        : _gistFeedUsers.sublist(0, gistLimit);
+
     return Container(
       height: 100,
       padding: const EdgeInsets.symmetric(vertical: 8),
@@ -390,9 +398,85 @@ class _TimetableScreenState extends State<TimetableScreen> {
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 12),
-        itemCount: _gistFeedUsers.length,
+        itemCount: visibleGists.length + (hasMoreGists && !isPlusUser ? 1 : 0),
         itemBuilder: (context, index) {
-          final user = _gistFeedUsers[index];
+          // --- NEW: "VIEW MORE" CARD ---
+          if (!isPlusUser && hasMoreGists && index == visibleGists.length) {
+            return GestureDetector(
+              onTap: () {
+                showModalBottomSheet(
+                  context: context,
+                  backgroundColor: Colors.transparent,
+                  builder: (sheetContext) => GlassContainer(
+                    borderRadius: 20,
+                    padding: const EdgeInsets.all(24.0),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.workspace_premium_outlined,
+                            color: Colors.amber, size: 48),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'Unlock All Gists',
+                          style: TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white),
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Upgrade to Class-Rep Plus to view all Gists from creators and get unlimited access to all features!',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.white70, fontSize: 16),
+                        ),
+                        const SizedBox(height: 24),
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.cyanAccent,
+                            foregroundColor: Colors.black,
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 12, horizontal: 32),
+                          ),
+                          child: const Text('Upgrade Now',
+                              style: TextStyle(fontWeight: FontWeight.bold)),
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                            // Here you would navigate to your subscription screen
+                            // For now, it just closes the sheet.
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                child: SizedBox(
+                  width: 70,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      CircleAvatar(
+                        radius: 30,
+                        backgroundColor: lightSuedeNavy,
+                        child: const Icon(Icons.arrow_forward_ios,
+                            color: Colors.cyanAccent),
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'View All',
+                        style:
+                            TextStyle(color: Colors.cyanAccent, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }
+
+          final user = visibleGists[index];
           return Padding(
             padding: const EdgeInsets.symmetric(horizontal: 4.0),
             child: GestureDetector(
@@ -587,7 +671,10 @@ class _TimetableScreenState extends State<TimetableScreen> {
                                     child: const Text('Upgrade Now',
                                         style: TextStyle(color: Colors.black)),
                                     onPressed: () {
-                                      Navigator.of(dialogContext).pop();
+                                      Navigator.of(modalContext)
+                                          .pop(); // Close the bottom sheet
+                                      widget.onNavigateToTab(
+                                          1); // Tell MainScreen to switch to the 'X' tab
                                     },
                                   ),
                                 ],
