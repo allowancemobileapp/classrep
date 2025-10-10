@@ -47,6 +47,7 @@ class _TimetableScreenState extends State<TimetableScreen> {
   // State for Unread Chat Count & Realtime
   int _unreadChatCount = 0;
   RealtimeChannel? _chatUpdateSubscription;
+  RealtimeChannel? _notificationSubscription;
 
   @override
   void initState() {
@@ -55,12 +56,17 @@ class _TimetableScreenState extends State<TimetableScreen> {
     _currentUserId = AuthService.instance.currentUser?.id;
     _loadAllData();
     _setupChatListener();
+    _setupNotificationListener(); // ADD THIS LINE
   }
 
   @override
   void dispose() {
     if (_chatUpdateSubscription != null) {
       supabase.removeChannel(_chatUpdateSubscription!);
+    }
+    if (_notificationSubscription != null) {
+      // ADD THIS BLOCK
+      supabase.removeChannel(_notificationSubscription!);
     }
     super.dispose();
   }
@@ -82,6 +88,30 @@ class _TimetableScreenState extends State<TimetableScreen> {
           ),
           callback: (payload) {
             _refreshUnreadChatCount();
+          },
+        )
+        .subscribe();
+  }
+
+  void _setupNotificationListener() {
+    if (_currentUserId == null) return;
+    _notificationSubscription = supabase
+        .channel('public:notifications:recipient_user_id=eq.$_currentUserId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent
+              .insert, // We only care about new notifications
+          schema: 'public',
+          table: 'notifications',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'recipient_user_id',
+            value: _currentUserId,
+          ),
+          callback: (payload) {
+            // When a new notification arrives, reload all data on the screen
+            if (mounted) {
+              _loadAllData();
+            }
           },
         )
         .subscribe();
