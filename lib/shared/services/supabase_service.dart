@@ -442,7 +442,7 @@ class SupabaseService {
     if (userId == null) throw Exception('User not logged in');
     if (content.trim().isEmpty) throw Exception('Comment cannot be empty');
 
-    // Step 1: Insert the comment
+    // Step 1: Insert the comment (this works)
     await supabase.from('event_comments').insert({
       'event_id': eventId,
       'commenter_user_id': userId,
@@ -450,16 +450,7 @@ class SupabaseService {
       'parent_comment_id': parentCommentId,
     });
 
-    // Step 2: Manually trigger the notification creation RPC
-    // This ensures the 'notifications' table gets populated
-    await supabase.rpc(
-      'create_comment_notification',
-      params: {
-        'p_event_id': eventId,
-        'p_comment_content': content.trim(),
-        'p_commenter_id': userId,
-      },
-    );
+    // REMOVED: The RPC call (doesn't exist yet—add later if needed for notifs)
   }
 
   Future<void> deleteComment(String commentId) async {
