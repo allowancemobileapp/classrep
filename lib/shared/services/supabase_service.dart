@@ -141,6 +141,7 @@ class SupabaseService {
       'subscribe_to_timetable',
       params: {'p_owner_username': username},
     );
+    // No return value needed, but we check for errors implicitly.
   }
 
   // Fetches the list of users that the current user is subscribed to.
@@ -441,16 +442,24 @@ class SupabaseService {
     if (userId == null) throw Exception('User not logged in');
     if (content.trim().isEmpty) throw Exception('Comment cannot be empty');
 
-    try {
-      await supabase.from('event_comments').insert({
-        'event_id': eventId,
-        'commenter_user_id': userId,
-        'text': content.trim(),
-        'parent_comment_id': parentCommentId,
-      });
-    } catch (e) {
-      throw Exception('Error posting comment: $e');
-    }
+    // Step 1: Insert the comment
+    await supabase.from('event_comments').insert({
+      'event_id': eventId,
+      'commenter_user_id': userId,
+      'text': content.trim(),
+      'parent_comment_id': parentCommentId,
+    });
+
+    // Step 2: Manually trigger the notification creation RPC
+    // This ensures the 'notifications' table gets populated
+    await supabase.rpc(
+      'create_comment_notification',
+      params: {
+        'p_event_id': eventId,
+        'p_comment_content': content.trim(),
+        'p_commenter_id': userId,
+      },
+    );
   }
 
   Future<void> deleteComment(String commentId) async {
@@ -583,6 +592,7 @@ class SupabaseService {
   }
 
   Future<void> sendEventReminder(String eventId) async {
+    // This RPC now creates the notifications, which will fire the push trigger
     await supabase.rpc(
       'send_event_reminder',
       params: {'event_id_to_remind': eventId},

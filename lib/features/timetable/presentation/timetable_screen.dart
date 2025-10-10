@@ -1885,11 +1885,37 @@ class _CommentsSheetState extends State<_CommentsSheet> {
                           child: CircularProgressIndicator(
                               color: Colors.cyanAccent));
                     }
+                    // --- FRIEND'S FIX: User-friendly error (no raw Supabase details) ---
                     if (snapshot.hasError) {
                       return Center(
-                          child: Text('Error: ${snapshot.error}',
-                              style: const TextStyle(color: Colors.red)));
+                        child: Padding(
+                          padding: const EdgeInsets.all(24.0),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(Icons.wifi_off_rounded,
+                                  color: Colors.white38, size: 48),
+                              const SizedBox(height: 16),
+                              const Text(
+                                'Could not load comments.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                    color: Colors.white70, fontSize: 16),
+                              ),
+                              const SizedBox(height: 8),
+                              const Text(
+                                'Please check your internet connection and try again.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                    color: Colors.white54, fontSize: 14),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
                     }
+                    // --- END FIX ---
+
                     final flatComments = snapshot.data ?? [];
                     final commentsTree = _buildCommentTree(flatComments);
 
