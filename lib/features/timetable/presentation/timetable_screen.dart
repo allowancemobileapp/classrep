@@ -1915,7 +1915,6 @@ class _CommentsSheetState extends State<_CommentsSheet> {
                           child: CircularProgressIndicator(
                               color: Colors.cyanAccent));
                     }
-                    // --- FRIEND'S FIX: User-friendly error (no raw Supabase details) ---
                     if (snapshot.hasError) {
                       return Center(
                         child: Padding(
@@ -1944,8 +1943,6 @@ class _CommentsSheetState extends State<_CommentsSheet> {
                         ),
                       );
                     }
-                    // --- END FIX ---
-
                     final flatComments = snapshot.data ?? [];
                     final commentsTree = _buildCommentTree(flatComments);
 

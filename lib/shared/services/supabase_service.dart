@@ -141,7 +141,6 @@ class SupabaseService {
       'subscribe_to_timetable',
       params: {'p_owner_username': username},
     );
-    // No return value needed, but we check for errors implicitly.
   }
 
   // Fetches the list of users that the current user is subscribed to.
